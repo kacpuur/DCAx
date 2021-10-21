@@ -38,16 +38,8 @@ contract DCAX is Context, IERC20, Ownable {
     uint8 private constant _decimals = 9;
 
 
-    //FEES 2% tax, 2% LP, 2% BURN, 2% LOTTERY POOL
+    //FEES 2% REFLECTION, 2% LP, 2% BURN, 2% LOTTERY POOL, ALL 2%
     uint256 public _taxFee = 2;
-    uint256 private _previousTaxFee = _taxFee;
-    uint256 public _liquidityFee = 2;
-    uint256 private _previousLiquidityFee = _liquidityFee;
-    uint256 public _burnFee = 2;
-    uint256 private _previousBurnFee = _burnFee;
-    uint256 public _lotteryFee = 2;
-    uint256 private _previousLotteryFee = _lotteryFee;
-
     uint256 private _feeMultiplier = 1;
 
     IPancakeRouter02 public immutable pancakeRouter;
@@ -262,7 +254,8 @@ contract DCAX is Context, IERC20, Ownable {
             !_isExcluded[sender],
             "Excluded addresses cannot call this function"
         );
-        (uint256 rAmount, , , , , , , ) = _getValues(tAmount);
+        uint256 currentRate = _getRate();
+        uint256 rAmount = tAmount.mul(currentRate);
         _rOwned[sender] = _rOwned[sender].sub(rAmount);
         _rTotal = _rTotal.sub(rAmount);
         _tFeeTotal = _tFeeTotal.add(tAmount);
@@ -273,11 +266,13 @@ contract DCAX is Context, IERC20, Ownable {
     view
     returns(uint256) {
         require(tAmount <= _tTotal, "Amount must be less than supply");
+        uint256 currentRate = _getRate();
         if (!deductTransferFee) {
-            (uint256 rAmount, , , , , , , ) = _getValues(tAmount);
+            uint256 rAmount = tAmount.mul(currentRate);
             return rAmount;
         } else {
-            (, uint256 rTransferAmount, , , , , , ) = _getValues(tAmount);
+            (uint256 tTransferAmount, ) = _getTValues(tAmount);
+            uint256 rTransferAmount = tTransferAmount.mul(currentRate);
             return rTransferAmount;
         }
     }
@@ -360,44 +355,7 @@ contract DCAX is Context, IERC20, Ownable {
         _tFeeTotal = _tFeeTotal.add(tFee);
     }
 
-    //Added tBurn to getvalues
-    function _getValues(uint256 tAmount)
-    private
-    view
-    returns(
-        uint256,
-        uint256,
-        uint256,
-        uint256,
-        uint256,
-        uint256,
-        uint256,
-        uint256
-    ) {
-        (
-            uint256 tTransferAmount,
-            uint256 tFee,
-            uint256 tLiquidity,
-            uint256 tBurn,
-            uint256 tLottery
-        ) = _getTValues(tAmount);
-
-        uint256 currentRate = _getRate();
-        uint256 rAmount = tAmount.mul(currentRate);
-        uint256 rTransferAmount = tTransferAmount.mul(currentRate);
-        uint256 rFee = tFee.mul(currentRate);
-
-        return (
-            rAmount,
-            rTransferAmount,
-            rFee,
-            tTransferAmount,
-            tFee,
-            tLiquidity,
-            tBurn,
-            tLottery
-        );
-    }
+    
 
     //Added tBurn to function 
     function _getTValues(uint256 tAmount)
@@ -405,17 +363,11 @@ contract DCAX is Context, IERC20, Ownable {
     view
     returns(
         uint256,
-        uint256,
-        uint256,
-        uint256,
         uint256
     ) {
         uint256 tFee = tAmount.mul(_taxFee * _feeMultiplier).div(100);
-        uint256 tLiquidity = tAmount.mul(_liquidityFee * _feeMultiplier).div(100);
-        uint256 tBurn = tAmount.mul(_burnFee * _feeMultiplier).div(100);
-        uint256 tLottery = tAmount.mul(_lotteryFee * _feeMultiplier).div(100);
-        uint256 tTransferAmount = tAmount.sub(tFee).sub(tLiquidity).sub(tBurn).sub(tLottery);
-        return (tTransferAmount, tFee, tLiquidity, tBurn, tLottery);
+        uint256 tTransferAmount = tAmount.sub(tFee).sub(tFee).sub(tFee).sub(tFee);
+        return (tTransferAmount, tFee);
     }
 
 
@@ -640,17 +592,15 @@ contract DCAX is Context, IERC20, Ownable {
         if (!takeFee) removeAllFee();
 
         (
-            uint256 rAmount,
-            uint256 rTransferAmount,
-            uint256 rFee,
+            
             uint256 tTransferAmount,
-            uint256 tFee,
-            uint256 tLiquidity,
-            uint256 tBurn,
-            uint256 tLottery
-        ) = _getValues(amount);
-
-
+            uint256 tFee
+        ) = _getTValues(amount);
+        
+        uint256 currentRate = _getRate();
+        uint256 rAmount = amount.mul(currentRate);
+        uint256 rTransferAmount = tTransferAmount.mul(currentRate);
+        uint256 rFee = tFee.mul(currentRate);
         if (_isExcluded[sender] && !_isExcluded[recipient]) {
 
             _tOwned[sender] = _tOwned[sender].sub(amount);
@@ -682,12 +632,12 @@ contract DCAX is Context, IERC20, Ownable {
 
         }
 
-        _takeLiquidity(tLiquidity);
-        _takeBurn(tBurn);
+        _takeLiquidity(tFee);
+        _takeBurn(tFee);
         _reflectFee(rFee, tFee);
-        _takeToLottery(tLottery);
-        if (_burnFee > 0) {
-            emit Transfer(sender, _BurnWallet, tBurn);
+        _takeToLottery(tFee);
+        if (_taxFee > 0) {
+            emit Transfer(sender, _BurnWallet, tFee);
         }
         emit Transfer(sender, recipient, tTransferAmount);
 
