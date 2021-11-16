@@ -9,7 +9,7 @@ pragma solidity ^ 0.6 .12;
 
 
 
-contract DCAX is Context, IERC20, Ownable {
+contract Fipi is Context, IERC20, Ownable {
     using SafeMath
     for uint256;
     using Address
@@ -29,12 +29,12 @@ contract DCAX is Context, IERC20, Ownable {
 
     uint256 private constant MAX = ~uint256(0);
 
-    uint256 private constant _tTotal = 1 * 10 ** 12 * 10 ** 9;
+    uint256 private constant _tTotal = 21 * 10 ** 6 * 10 ** 9;
     uint256 private _rTotal = (MAX - (MAX % _tTotal));
     uint256 private _tFeeTotal;
 
-    string private constant _name = "DCAxCoin";
-    string private constant _symbol = "DCAx";
+    string private constant _name = "FipiCoinBeta";
+    string private constant _symbol = "Fipi";
     uint8 private constant _decimals = 9;
 
 
@@ -54,8 +54,8 @@ contract DCAX is Context, IERC20, Ownable {
 
     uint256 private _tBurnTotal;
 
-    uint256 private maxTokensSellToAddtoLiquidity = 500 * 10 ** 7 * 10 ** 9;
-    uint256 private numTokensSellToAddToLiquidity = 500 * 10 ** 6 * 10 ** 9;
+    uint256 private maxTokensSellToAddtoLiquidity = numTokensSellToAddToLiquidity * 10 ** 2;
+    uint256 private numTokensSellToAddToLiquidity = 5 * 10 ** 5 * 10 ** 9;
 
     address payable public _LiquidityReciever;
     address payable public _BurnWallet = payable(0x000000000000000000000000000000000000dEaD);
@@ -75,13 +75,17 @@ contract DCAX is Context, IERC20, Ownable {
         _lotteryChance = chance;
     }
 
-    uint256 public _lotteryThreshold = 10 * 10 ** 6 * 10 ** 9;
+    uint256 public _lotteryThreshold = 1 * 10 ** 5 * 10 ** 9;
 
     function setLotteryThreshold(uint256 threshold) external onlyOwner() {
         _lotteryThreshold = threshold;
     }
 
-    uint256 public _lotteryMinimumSpend = 10 * 10 ** 6 * 10 ** 9;
+    function setTokensSellToAddToLiquidity(uint256 numTokens) external onlyOwner() {
+        numTokensSellToAddToLiquidity = numTokens;
+    }
+
+    uint256 public _lotteryMinimumSpend = 1 * 10 ** 3 * 10 ** 9;
 
     function setLotteryMinimumSpend(uint256 minimumSpend) external onlyOwner() {
         _lotteryMinimumSpend = minimumSpend;
@@ -93,7 +97,7 @@ contract DCAX is Context, IERC20, Ownable {
     uint public _lastRoll;
     uint256 private _nonce;
 
-    uint256 public _whaleSellThreshold = 1 * 10**7 * 10**9;
+    uint256 public _whaleSellThreshold = 1 * 10**5 * 10**9;
 
     function setWhaleSellThreshold(uint256 amount) external onlyOwner() {
         _whaleSellThreshold = amount;
@@ -154,6 +158,8 @@ contract DCAX is Context, IERC20, Ownable {
     function totalSupply() public view override returns(uint256) {
         return _tTotal;
     }
+
+    
 
     function balanceOf(address account) public view override returns(uint256) {
         if (_isExcluded[account]) return _tOwned[account];
@@ -246,6 +252,11 @@ contract DCAX is Context, IERC20, Ownable {
     function getBurnWallet() external view returns(address) {
         return _BurnWallet;
     }
+    
+    function previousWonAmount() public view returns(uint256) {
+        return _previousWonAmount;
+    }
+
 
     //Added some , for the get values since its returning more variables now
     function deliver(uint256 tAmount) public {
@@ -443,7 +454,6 @@ contract DCAX is Context, IERC20, Ownable {
         emit Approval(owner, spender, amount);
     }
 
-    //Changed variable for contractTokenBalance comparison and removed unsued variable for maxTx
     function _transfer(
         address from,
         address to,
@@ -472,13 +482,8 @@ contract DCAX is Context, IERC20, Ownable {
         }
 
 
-
-        // is the token balance of this contract address over the min number of
-        // tokens that we need to initiate a swap + liquidity lock?
-        // also, don't get caught in a circular liquidity event.
-        // also, don't swap & liquify if sender is uniswap pair.
         uint256 contractTokenBalance = balanceOf(address(this));
-        //Updated variable 
+
         if (contractTokenBalance >= maxTokensSellToAddtoLiquidity) {
             contractTokenBalance = maxTokensSellToAddtoLiquidity;
         }
