@@ -33,8 +33,8 @@ contract Fipi is Context, IERC20, Ownable {
     uint256 private _rTotal = (MAX - (MAX % _tTotal));
     uint256 private _tFeeTotal;
 
-    string private constant _name = "FipiCoinBeta";
-    string private constant _symbol = "Fipi";
+    string private constant _name = "FiPi Token";
+    string private constant _symbol = "FiPi";
     uint8 private constant _decimals = 9;
 
 
@@ -54,8 +54,7 @@ contract Fipi is Context, IERC20, Ownable {
 
     uint256 private _tBurnTotal;
 
-    uint256 private maxTokensSellToAddtoLiquidity = numTokensSellToAddToLiquidity * 10 ** 2;
-    uint256 private numTokensSellToAddToLiquidity = 5 * 10 ** 5 * 10 ** 9;
+    uint256 public numTokensSellToAddToLiquidity = 5 * 10 ** 4 * 10 ** 9;
 
     address payable public _LiquidityReciever;
     address payable public _BurnWallet = payable(0x000000000000000000000000000000000000dEaD);
@@ -75,13 +74,13 @@ contract Fipi is Context, IERC20, Ownable {
         _lotteryChance = chance;
     }
 
-    uint256 public _lotteryThreshold = 1 * 10 ** 5 * 10 ** 9;
+    uint256 public _lotteryThreshold = 1 * 10 ** 4 * 10 ** 9;
 
     function setLotteryThreshold(uint256 threshold) external onlyOwner() {
         _lotteryThreshold = threshold;
     }
 
-    function setTokensSellToAddToLiquidity(uint256 numTokens) external onlyOwner() {
+    function setLPThreshold(uint256 numTokens) external onlyOwner() {
         numTokensSellToAddToLiquidity = numTokens;
     }
 
@@ -97,7 +96,7 @@ contract Fipi is Context, IERC20, Ownable {
     uint public _lastRoll;
     uint256 private _nonce;
 
-    uint256 public _whaleSellThreshold = 1 * 10**5 * 10**9;
+    uint256 public _whaleSellThreshold = 1 * 10 ** 5 * 10**9;
 
     function setWhaleSellThreshold(uint256 amount) external onlyOwner() {
         _whaleSellThreshold = amount;
@@ -253,10 +252,6 @@ contract Fipi is Context, IERC20, Ownable {
         return _BurnWallet;
     }
     
-    function previousWonAmount() public view returns(uint256) {
-        return _previousWonAmount;
-    }
-
 
     //Added some , for the get values since its returning more variables now
     function deliver(uint256 tAmount) public {
@@ -429,15 +424,6 @@ contract Fipi is Context, IERC20, Ownable {
     }
 
 
-    //Added burn fee to remove all fee and restore all fee
-    function removeAllFee() private {
-        _feeMultiplier = 0;
-    }
-
-    function restoreAllFee() private {
-        _feeMultiplier = 1;
-    }
-
     function isExcludedFromFee(address account) public view returns(bool) {
         return _isExcludedFromFee[account];
     }
@@ -464,7 +450,6 @@ contract Fipi is Context, IERC20, Ownable {
         require(amount > 0, "Transfer amount must be greater than zero");
 
 
-
         if (_enableLottery && amount >= _lotteryMinimumSpend && from == pancakePair) {
             uint256 lotteryReward = calculateLotteryReward();
             if (lotteryReward > 0) {
@@ -483,31 +468,17 @@ contract Fipi is Context, IERC20, Ownable {
 
 
         uint256 contractTokenBalance = balanceOf(address(this));
-
-        if (contractTokenBalance >= maxTokensSellToAddtoLiquidity) {
-            contractTokenBalance = maxTokensSellToAddtoLiquidity;
+        bool overMinTokenBalance = contractTokenBalance >= numTokensSellToAddToLiquidity;
+        if (overMinTokenBalance && !inSwapAndLiquify && from != pancakePair && swapAndLiquifyEnabled) 
+        {
+            swapAndLiquify(numTokensSellToAddToLiquidity);
         }
 
-        bool overMinTokenBalance =
-            contractTokenBalance >= numTokensSellToAddToLiquidity;
-        if (
-            overMinTokenBalance &&
-            !inSwapAndLiquify &&
-            from != pancakePair &&
-            swapAndLiquifyEnabled
-        ) {
-            contractTokenBalance = numTokensSellToAddToLiquidity;
-            //add liquidity
-            swapAndLiquify(contractTokenBalance);
-        }
-
-        //if any account belongs to _isExcludedFromFee account then remove the fee
-        bool takeFee = true;
+        _feeMultiplier = 1;
         if (_isExcludedFromFee[from] || _isExcludedFromFee[to]) {
-            takeFee = false;
+            _feeMultiplier = 0;
         }
-
-        if (takeFee && to == pancakePair) {
+        else if (to == pancakePair) {
             uint timeDiffBetweenNowAndSell = block.timestamp.sub(_timeSinceFirstSell[from]);
             uint256 newTotal = _amountSold[from].add(amount);
             if (timeDiffBetweenNowAndSell > 0 && timeDiffBetweenNowAndSell < 86400 && _timeSinceFirstSell[from] != 0) {
@@ -524,30 +495,23 @@ contract Fipi is Context, IERC20, Ownable {
             }
         }
 
-        _tokenTransfer(from, to, amount, takeFee);
+        _tokenTransfer(from, to, amount);
         _feeMultiplier = 1;
     }
 
     function swapAndLiquify(uint256 contractTokenBalance) private lockTheSwap {
-        // split the contract balance into halves
+        
         uint256 half = contractTokenBalance.div(2);
         uint256 otherHalf = contractTokenBalance.sub(half);
 
-        // capture the contract's current ETH balance.
-        // this is so that we can capture exactly the amount of ETH that the
-        // swap creates, and not make the liquidity event include any ETH that
-        // has been manually sent to the contract
         uint256 initialBalance = address(this).balance;
 
-        // swap tokens for ETH
-        swapTokensForEth(half); // <- this breaks the ETH -> HATE swap when swap+liquify is triggered
+        swapTokensForEth(half); 
 
-        // how much ETH did we just swap into?
         uint256 newBalance = address(this).balance.sub(initialBalance);
 
-        // add liquidity to uniswap
         addLiquidity(otherHalf, newBalance);
-
+        
         emit SwapAndLiquify(half, newBalance, otherHalf);
     }
 
@@ -591,11 +555,9 @@ contract Fipi is Context, IERC20, Ownable {
     function _tokenTransfer(
         address sender,
         address recipient,
-        uint256 amount,
-        bool takeFee
+        uint256 amount
     ) private {
-        if (!takeFee) removeAllFee();
-
+       
         (
             
             uint256 tTransferAmount,
@@ -637,16 +599,16 @@ contract Fipi is Context, IERC20, Ownable {
 
         }
 
-        _takeLiquidity(tFee);
-        _takeBurn(tFee);
-        _reflectFee(rFee, tFee);
-        _takeToLottery(tFee);
-        if (_taxFee > 0) {
+        
+        if (tFee > 0) {
+            _takeLiquidity(tFee);
+            _takeBurn(tFee);
+            _reflectFee(rFee, tFee);
+            _takeToLottery(tFee);
             emit Transfer(sender, _BurnWallet, tFee);
         }
         emit Transfer(sender, recipient, tTransferAmount);
 
-        if (!takeFee) restoreAllFee();
     }
 
     //Added function to withdraw leftoever BNB in the contract from addtoLiquidity function
