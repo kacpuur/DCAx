@@ -298,16 +298,20 @@ contract Fipi is Context, IERC20, Ownable {
     function excludeFromReward(address account) external onlyOwner() {
         // require(account != 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D, 'We can not exclude Uniswap router.');
         require(!_isExcluded[account], "Account is already excluded");
-        if (_rOwned[account] > 0) {
-            _tOwned[account] = tokenFromReflection(_rOwned[account]);
+        //max number of excluded accounts is 1000, there is a loop over _excluded, and we dont want to push gas prize to high. it doesnt metter, couse we dont want to exclude any one anyway.
+        if(_excluded.length < 1000){
+            if (_rOwned[account] > 0) {
+                _tOwned[account] = tokenFromReflection(_rOwned[account]);
+            }
+            _isExcluded[account] = true;
+            _excluded.push(account);
         }
-        _isExcluded[account] = true;
-        _excluded.push(account);
     }
 
     function includeInReward(address account) external onlyOwner() {
         require(_isExcluded[account], "Account is already excluded");
-        for (uint256 i = 0; i < _excluded.length; i++) {
+        //excluded length is max 1000
+        for (uint256 i = 0; i < length; i++) {
             if (_excluded[i] == account) {
                 _excluded[i] = _excluded[_excluded.length - 1];
                 _tOwned[account] = 0;
@@ -386,6 +390,7 @@ contract Fipi is Context, IERC20, Ownable {
     function _getCurrentSupply() private view returns(uint256, uint256) {
         uint256 rSupply = _rTotal;
         uint256 tSupply = _tTotal;
+        //excluded length is max 1000
         for (uint256 i = 0; i < _excluded.length; i++) {
             if (
                 _rOwned[_excluded[i]] > rSupply ||
