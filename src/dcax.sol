@@ -311,7 +311,7 @@ contract Fipi is Context, IERC20, Ownable {
     function includeInReward(address account) external onlyOwner() {
         require(_isExcluded[account], "Account is already excluded");
         //excluded length is max 1000
-        for (uint256 i = 0; i < length; i++) {
+        for (uint256 i = 0; i < _excluded.length; i++) {
             if (_excluded[i] == account) {
                 _excluded[i] = _excluded[_excluded.length - 1];
                 _tOwned[account] = 0;
