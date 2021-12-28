@@ -4,7 +4,7 @@ import './address.sol';
 import './pancake.sol';
 import './context.sol';
 
-pragma solidity ^ 0.6 .12;
+pragma solidity ^0.6.12;
 // SPDX-License-Identifier: MIT
 
 
@@ -46,10 +46,36 @@ contract Fipi is Context, IERC20, Ownable {
     address public immutable pancakePair;
 
     bool inSwapAndLiquify;
-    bool public swapAndLiquifyEnabled = true;
 
-    function setLiquidity(bool b) external onlyOwner() {
-        swapAndLiquifyEnabled = b;
+    bool public swapAndLiquifyEnabled = false;
+
+    function setSwapAndLiquifyEnabled(bool _enabled) external onlyOwner {
+        swapAndLiquifyEnabled = _enabled;
+    }
+
+
+    bool public _hasLiqBeenAdded = false;
+    uint256 private _liqAddBlock = 0;
+    uint256 private _liqAddStamp = 0;
+
+    bool public antisniperEnabled = true;
+
+    uint256 private gasPriceLimit;
+
+    function setGasPriceLimit(uint256 gas) external onlyOwner {
+        require(gas >= 100);
+        gasPriceLimit = gas * 1 gwei;
+    }
+
+    function setAntisniperEnabled(bool _antisniperEnabled) external onlyOwner() {
+        antisniperEnabled = _antisniperEnabled;
+    }
+
+    mapping (address => uint256) private lastTrade;
+    bool public tradingPaused = true;
+
+    function enableTrading() external onlyOwner {
+        tradingPaused = false;
     }
 
     uint256 private _tBurnTotal;
@@ -58,55 +84,37 @@ contract Fipi is Context, IERC20, Ownable {
 
     address payable public _LiquidityReciever;
     address payable public _BurnWallet = payable(0x000000000000000000000000000000000000dEaD);
+    address payable public _marketingAddress = payable(0x000000000000000000000000000000000000dEaD);
 
+    uint256 private _maxWalletSizePromile = 20;
+    uint256 private _sellMaxTxAmountPromile = 5;
 
-    bool public _enableLottery = false;
-
-    function setLottery(bool b) external onlyOwner() {
-        _enableLottery = b;
+    function setMaxWalletSize(uint256 promile) external onlyOwner() {
+        require(promile >= 1); // Cannot set lower than 0.1%
+        _maxWalletSizePromile = promile;
     }
 
-    uint256 private _lotteryPool = 0;
-
-    uint public _lotteryChance = 25;
-
-    function setLotteryChance(uint chance) external onlyOwner() {
-        _lotteryChance = chance;
+    function setSellMaxTxAmountPromile(uint256 promile) external onlyOwner() {
+        require(promile >= 1); // Cannot set lower than 0.1%
+        _sellMaxTxAmountPromile = promile;
     }
 
-    uint256 public _lotteryThreshold = 1 * 10 ** 4 * 10 ** 9;
-
-    function setLotteryThreshold(uint256 threshold) external onlyOwner() {
-        _lotteryThreshold = threshold;
-    }
 
     function setLPThreshold(uint256 numTokens) external onlyOwner() {
         numTokensSellToAddToLiquidity = numTokens;
     }
 
-    uint256 public _lotteryMinimumSpend = 1 * 10 ** 3 * 10 ** 9;
-
-    function setLotteryMinimumSpend(uint256 minimumSpend) external onlyOwner() {
-        _lotteryMinimumSpend = minimumSpend;
+    function setMarketingAddress(address marketingAddress) external onlyOwner() {
+        _marketingAddress = payable(marketingAddress);
     }
 
-    address public _previousWinner;
-    uint256 public _previousWonAmount;
-    uint public _previousWinTime;
-    uint public _lastRoll;
-    uint256 private _nonce;
-
+    
     uint256 public _whaleSellThreshold = 1 * 10 ** 5 * 10**9;
 
     function setWhaleSellThreshold(uint256 amount) external onlyOwner() {
         _whaleSellThreshold = amount;
     }
 
-    event LotteryAward(
-        address winner,
-        uint256 amount,
-        uint time
-    );
 
     event SwapAndLiquify(
         uint256 tokensSwapped,
@@ -296,7 +304,6 @@ contract Fipi is Context, IERC20, Ownable {
     }
 
     function excludeFromReward(address account) external onlyOwner() {
-        // require(account != 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D, 'We can not exclude Uniswap router.');
         require(!_isExcluded[account], "Account is already excluded");
         //max number of excluded accounts is 1000, there is a loop over _excluded, and we dont want to push gas prize to high. it doesnt metter, couse we dont want to exclude any one anyway.
         if(_excluded.length < 1000){
@@ -322,29 +329,7 @@ contract Fipi is Context, IERC20, Ownable {
         }
     }
 
-    function getLotteryTokens() public view returns(uint256) {
-        return tokenFromReflection(_lotteryPool);
-    }
-
-    function calculateLotteryReward() private returns(uint256) {
-        // If the transfer is a buy, and the lottery pool is above a certain token threshold, start to award it
-        uint256 reward = 0;
-        uint256 lotteryTokens = getLotteryTokens();
-        if (lotteryTokens >= _lotteryThreshold) {
-
-            _nonce++;
-            uint r = uint(uint256(keccak256(abi.encodePacked(block.difficulty, block.timestamp, _nonce))) % 1000);
-            r = r.add(1);
-            _lastRoll = r;
-
-            if (_lastRoll <= _lotteryChance) {
-                reward = lotteryTokens;
-            }
-        }
-        return reward;
-    }
-
-
+ 
     function excludeFromFee(address account) external onlyOwner {
         _isExcludedFromFee[account] = true;
     }
@@ -353,10 +338,7 @@ contract Fipi is Context, IERC20, Ownable {
         _isExcludedFromFee[account] = false;
     }
 
-    function setSwapAndLiquifyEnabled(bool _enabled) external onlyOwner {
-        swapAndLiquifyEnabled = _enabled;
-    }
-
+    
     //to recieve ETH from uniswapV2Router when swaping
     receive() external payable {}
 
@@ -422,13 +404,6 @@ contract Fipi is Context, IERC20, Ownable {
     }
 
 
-    function _takeToLottery(uint256 tLottery) private {
-        uint256 currentRate = _getRate();
-        uint256 rLottery = tLottery.mul(currentRate);
-        _lotteryPool = _lotteryPool.add(rLottery);
-    }
-
-
     function isExcludedFromFee(address account) public view returns(bool) {
         return _isExcludedFromFee[account];
     }
@@ -455,19 +430,28 @@ contract Fipi is Context, IERC20, Ownable {
         require(amount > 0, "Transfer amount must be greater than zero");
 
 
-        if (_enableLottery && amount >= _lotteryMinimumSpend && from == pancakePair) {
-            uint256 lotteryReward = calculateLotteryReward();
-            if (lotteryReward > 0) {
-                if (_isExcluded[to]) {
-                    _tOwned[to] = _tOwned[to].add(lotteryReward);
-                }
-                _rOwned[to] = _rOwned[to].add(_lotteryPool);
-                _lotteryPool = 0;
-                _previousWinner = to;
-                _previousWonAmount = lotteryReward;
-                _previousWinTime = block.timestamp;
-                emit LotteryAward(to, lotteryReward, block.timestamp);
-                emit Transfer(address(this), to, lotteryReward);
+        //ANTI-SNIPER AND LP CHECKER
+        if (antisniperEnabled && !_hasLiqBeenAdded){
+            _checkLiquidityAdd(from, to);
+            if (!_hasLiqBeenAdded && (_isExcludedFromFee[from] || _isExcludedFromFee[to])) {
+                revert("Only wallets marked by owner as excluded can transfer at this time."); //launchpads etc
+            }
+        }
+        else if(antisniperEnabled){
+            //LIMIT GAS PRIZE TO PREVENT SNIPERS
+            require(tx.gasprice <= gasPriceLimit, "Gas price exceeds limit.");
+            //THERE IS A POSSIBILITY TO HOLD TRADING AFTER LISTING FOR A WHILE
+            require (tradingPaused == false, "Trading not yet enabled.");
+            if (from == pancakePair)
+            {
+                //CHECK IS NEXT TRANSACTION IS ON THE SAME BLOCK AS LAST TRANSACTION, AND IF SO BLOCK
+                require(lastTrade[to] != block.number);
+                lastTrade[to] = block.number;
+            }
+            else 
+            {
+                require(lastTrade[from] != block.number);
+                lastTrade[from] = block.number;
             }
         }
 
@@ -480,10 +464,21 @@ contract Fipi is Context, IERC20, Ownable {
         }
 
         _feeMultiplier = 1;
+
+        //IF PRIVILIDGED WALLET, NO FEES
         if (_isExcludedFromFee[from] || _isExcludedFromFee[to]) {
             _feeMultiplier = 0;
         }
+        //FIRST THREE BLOCKS AFTER LISTING WE WILL ADD EXTRA FEE FOR SNIPERS
+        else if(block.number <= _liqAddBlock + 2){
+            _feeMultiplier = 5;
+        }
+        //IF SELL ON PANCAKE 
         else if (to == pancakePair) {
+            //MAX SELL IS SET INITIALLY TO 0,5% OF TOTAL SUPPLY
+            require(amount <= _tTotal.mul(_sellMaxTxAmountPromile).div(1000), "Transfer amount exceeds the sellMaxTxAmount.");
+
+            //ANTI-WHALE TAX IF YOU SELL TOO MUCH IN A DAY, YOU GET TAX x2
             uint timeDiffBetweenNowAndSell = block.timestamp.sub(_timeSinceFirstSell[from]);
             uint256 newTotal = _amountSold[from].add(amount);
             if (timeDiffBetweenNowAndSell > 0 && timeDiffBetweenNowAndSell < 86400 && _timeSinceFirstSell[from] != 0) {
@@ -499,61 +494,14 @@ contract Fipi is Context, IERC20, Ownable {
                 _amountSold[from] = amount;
             }
         }
-
+        //IF IT'S NOT A SELL AND WALLET IS NOT PRIVILIDGED SO THE RECIPENT IS PRIVATE WALLET OF INVESTOR WE CHECK IF WE DONT HAVE TO MUCH 
+        else if(to != pancakePair) {
+                uint256 contractBalanceRecepient = balanceOf(to);
+                uint256 maxWalletSize = _tTotal.mul(_maxWalletSizePromile).div(1000);
+                require(contractBalanceRecepient + amount <= maxWalletSize, "Transfer amount exceeds the maxWalletSize.");
+            }
         _tokenTransfer(from, to, amount);
         _feeMultiplier = 1;
-    }
-
-    function swapAndLiquify(uint256 contractTokenBalance) private lockTheSwap {
-        
-        uint256 half = contractTokenBalance.div(2);
-        uint256 otherHalf = contractTokenBalance.sub(half);
-
-        uint256 initialBalance = address(this).balance;
-
-        swapTokensForEth(half); 
-
-        uint256 newBalance = address(this).balance.sub(initialBalance);
-
-        addLiquidity(otherHalf, newBalance);
-        
-        emit SwapAndLiquify(half, newBalance, otherHalf);
-    }
-
-    function swapTokensForEth(uint256 tokenAmount) private {
-        // generate the uniswap pair path of token -> weth
-        address[] memory path = new address[](2);
-        path[0] = address(this);
-        path[1] = pancakeRouter.WETH();
-
-        _approve(address(this), address(pancakeRouter), tokenAmount);
-
-        // make the swap
-        pancakeRouter.swapExactTokensForETHSupportingFeeOnTransferTokens(
-            tokenAmount,
-            0, // accept any amount of ETH
-            path,
-            address(this),
-            block.timestamp
-        );
-    }
-
-    //Changed reciever to LiquidityReciever to generate income for the project when ownership is rennounced
-    function addLiquidity(uint256 tokenAmount, uint256 ethAmount) private {
-        // approve token transfer to cover all possible scenarios
-        _approve(address(this), address(pancakeRouter), tokenAmount);
-
-        // add the liquidity
-        pancakeRouter.addLiquidityETH {
-            value: ethAmount
-        }(
-            address(this),
-            tokenAmount,
-            0, // slippage is unavoidable
-            0, // slippage is unavoidable
-            _LiquidityReciever,
-            block.timestamp
-        );
     }
 
     //this method is responsible for taking all fee, if takeFee is true
@@ -606,19 +554,95 @@ contract Fipi is Context, IERC20, Ownable {
 
         
         if (tFee > 0) {
-            _takeLiquidity(tFee);
+            _takeLiquidity(tFee * 2); //HERE COMES TIMES 2 BECAUSE ITS ALSO MARKETING
             _takeBurn(tFee);
             _reflectFee(rFee, tFee);
-            _takeToLottery(tFee);
             emit Transfer(sender, _BurnWallet, tFee);
         }
         emit Transfer(sender, recipient, tTransferAmount);
 
     }
 
+
+
+
+
+    function swapAndLiquify(uint256 contractTokenBalance) private lockTheSwap {
+        
+        // 0,25 is still in TOKENS
+        uint256 quater = contractTokenBalance.div(4);
+        
+        //0,75 will be converted to BNB
+        uint256 threeQuaters = contractTokenBalance.sub(quater);
+
+        uint256 initialBalance = address(this).balance;
+
+        swapTokensForEth(threeQuaters); 
+
+
+        uint256 newBalance = address(this).balance.sub(initialBalance);
+        
+        //now we need 1/3 of this 0,75 swapped and pair with 0,25
+        uint256 halfNewBalance = newBalance.div(3);
+        addLiquidity(quater, halfNewBalance);
+
+        uint256 leftForMarketing = newBalance.sub(halfNewBalance);
+        _marketingAddress.transfer(leftForMarketing);
+        
+        emit SwapAndLiquify(threeQuaters, newBalance, quater);
+    }
+    function swapTokensForEth(uint256 tokenAmount) private {
+        // generate the uniswap pair path of token -> weth
+        address[] memory path = new address[](2);
+        path[0] = address(this);
+        path[1] = pancakeRouter.WETH();
+
+        _approve(address(this), address(pancakeRouter), tokenAmount);
+
+        // make the swap
+        pancakeRouter.swapExactTokensForETHSupportingFeeOnTransferTokens(
+            tokenAmount,
+            0, // accept any amount of ETH
+            path,
+            address(this),
+            block.timestamp
+        );
+    }
+
+    //Changed reciever to LiquidityReciever to generate income for the project when ownership is rennounced
+    function addLiquidity(uint256 tokenAmount, uint256 ethAmount) private {
+        // approve token transfer to cover all possible scenarios
+        _approve(address(this), address(pancakeRouter), tokenAmount);
+
+        // add the liquidity
+        pancakeRouter.addLiquidityETH {
+            value: ethAmount
+        }(
+            address(this),
+            tokenAmount,
+            0, // slippage is unavoidable
+            0, // slippage is unavoidable
+            _LiquidityReciever,
+            block.timestamp
+        );
+    }
+
+    
     //Added function to withdraw leftoever BNB in the contract from addtoLiquidity function
     function withDrawLeftoverBNB() public {
         require(_msgSender() == _LiquidityReciever, "Only the liquidity reciever can use this function!");
         _LiquidityReciever.transfer(address(this).balance);
     }
+
+    function _checkLiquidityAdd(address from, address to) private {
+        require(!_hasLiqBeenAdded, "Liquidity already added and marked.");
+        if (from == owner() && to == pancakePair) {
+            _hasLiqBeenAdded = true;
+            _liqAddBlock = block.number;
+            _liqAddStamp = block.timestamp;
+            swapAndLiquifyEnabled = true;
+        }
+    }
+
+
 }
