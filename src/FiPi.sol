@@ -33,8 +33,8 @@ contract Fipi is Context, IERC20, Ownable {
     uint256 private _rTotal = (MAX - (MAX % _tTotal));
     uint256 private _tFeeTotal;
 
-    string private constant _name = "FiPi Token";
-    string private constant _symbol = "FiPi";
+    string private constant _name = "FiPi Token Final";
+    string private constant _symbol = "FiPi3";
     uint8 private constant _decimals = 9;
 
 
@@ -84,7 +84,7 @@ contract Fipi is Context, IERC20, Ownable {
 
     address payable public _LiquidityReciever;
     address payable public _BurnWallet = payable(0x000000000000000000000000000000000000dEaD);
-    address payable public _marketingAddress = payable(0x000000000000000000000000000000000000dEaD);
+    address payable public _marketingAddress = payable(0x4B01143107498CBa025Dc13C4283D5f4034016DC);
 
     uint256 private _maxWalletSizePromile = 20;
     uint256 private _sellMaxTxAmountPromile = 5;
@@ -137,7 +137,7 @@ contract Fipi is Context, IERC20, Ownable {
 
         // mainnet: 0x10ED43C718714eb63d5aA57B78B54704E256024E
         // testnet: 0xD99D1c33F9fC3444f8101754aBC46c52416550D1
-        IPancakeRouter02 _pancakeRouter = IPancakeRouter02(0x10ED43C718714eb63d5aA57B78B54704E256024E);
+        IPancakeRouter02 _pancakeRouter = IPancakeRouter02(0xD99D1c33F9fC3444f8101754aBC46c52416550D1);
         pancakePair = IPancakeFactory(_pancakeRouter.factory()).createPair(address(this), _pancakeRouter.WETH());
         pancakeRouter = _pancakeRouter;
 
@@ -433,7 +433,7 @@ contract Fipi is Context, IERC20, Ownable {
         //ANTI-SNIPER AND LP CHECKER
         if (antisniperEnabled && !_hasLiqBeenAdded){
             _checkLiquidityAdd(from, to);
-            if (!_hasLiqBeenAdded && (_isExcludedFromFee[from] || _isExcludedFromFee[to])) {
+            if (!_hasLiqBeenAdded && ((_isExcludedFromFee[from] || _isExcludedFromFee[to]) == false)) {
                 revert("Only wallets marked by owner as excluded can transfer at this time."); //launchpads etc
             }
         }
@@ -470,7 +470,7 @@ contract Fipi is Context, IERC20, Ownable {
             _feeMultiplier = 0;
         }
         //FIRST THREE BLOCKS AFTER LISTING WE WILL ADD EXTRA FEE FOR SNIPERS
-        else if(block.number <= _liqAddBlock + 2){
+        else if((block.number <= _liqAddBlock + 2) && antisniperEnabled){
             _feeMultiplier = 5;
         }
         //IF SELL ON PANCAKE 
@@ -496,10 +496,10 @@ contract Fipi is Context, IERC20, Ownable {
         }
         //IF IT'S NOT A SELL AND WALLET IS NOT PRIVILIDGED SO THE RECIPENT IS PRIVATE WALLET OF INVESTOR WE CHECK IF WE DONT HAVE TO MUCH 
         else if(to != pancakePair) {
-                uint256 contractBalanceRecepient = balanceOf(to);
-                uint256 maxWalletSize = _tTotal.mul(_maxWalletSizePromile).div(1000);
-                require(contractBalanceRecepient + amount <= maxWalletSize, "Transfer amount exceeds the maxWalletSize.");
-            }
+            uint256 contractBalanceRecepient = balanceOf(to);
+            uint256 maxWalletSize = _tTotal.mul(_maxWalletSizePromile).div(1000);
+            require(contractBalanceRecepient + amount <= maxWalletSize, "Transfer amount exceeds the maxWalletSize.");
+        }
         _tokenTransfer(from, to, amount);
         _feeMultiplier = 1;
     }
@@ -609,7 +609,7 @@ contract Fipi is Context, IERC20, Ownable {
         );
     }
 
-    //Changed reciever to LiquidityReciever to generate income for the project when ownership is rennounced
+    //reciever to LiquidityReciever to generate income for the project when ownership is rennounced
     function addLiquidity(uint256 tokenAmount, uint256 ethAmount) private {
         // approve token transfer to cover all possible scenarios
         _approve(address(this), address(pancakeRouter), tokenAmount);
@@ -636,7 +636,7 @@ contract Fipi is Context, IERC20, Ownable {
 
     function _checkLiquidityAdd(address from, address to) private {
         require(!_hasLiqBeenAdded, "Liquidity already added and marked.");
-        if (from == owner() && to == pancakePair) {
+        if (_isExcludedFromFee[from] && to == pancakePair) {
             _hasLiqBeenAdded = true;
             _liqAddBlock = block.number;
             _liqAddStamp = block.timestamp;
