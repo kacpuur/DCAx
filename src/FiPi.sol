@@ -33,34 +33,44 @@ contract Fipi is Context, IERC20, Ownable {
     uint256 private _rTotal = (MAX - (MAX % _tTotal));
     uint256 private _tFeeTotal;
 
-    string private constant _name = "FiPi Token Final";
-    string private constant _symbol = "FiPi3";
+    string private constant _name = "FiPi Token Final Final";
+    string private constant _symbol = "FiPi4";
     uint8 private constant _decimals = 9;
+
+     uint256 private _tBurnTotal;
+    address payable public _LiquidityReciever;
+    address payable public _BurnWallet = payable(0x000000000000000000000000000000000000dEaD);
+    address payable public _marketingAddress = payable(0x4B01143107498CBa025Dc13C4283D5f4034016DC);
 
 
     //FEES 2% REFLECTION, 2% LP, 2% BURN, 2% LOTTERY POOL, ALL 2%
     uint256 public _taxFee = 2;
     uint256 private _feeMultiplier = 1;
 
+    //LP
     IPancakeRouter02 public immutable pancakeRouter;
     address public immutable pancakePair;
-
+    uint256 public lPThreshold = 5 * 10 ** 4 * 10 ** 9;
     bool inSwapAndLiquify;
-
     bool public swapAndLiquifyEnabled = false;
 
     function setSwapAndLiquifyEnabled(bool _enabled) external onlyOwner {
         swapAndLiquifyEnabled = _enabled;
     }
 
+    
+    function setLPThreshold(uint256 numTokens) external onlyOwner() {
+        lPThreshold = numTokens;
+    }
 
+    //ANTI_SNIPER FOR LAUNCH
     bool public _hasLiqBeenAdded = false;
     uint256 private _liqAddBlock = 0;
     uint256 private _liqAddStamp = 0;
-
     bool public antisniperEnabled = true;
-
     uint256 private gasPriceLimit;
+    mapping (address => uint256) private lastTrade;
+    bool public tradingPaused = true;
 
     function setGasPriceLimit(uint256 gas) external onlyOwner {
         require(gas >= 100);
@@ -71,26 +81,17 @@ contract Fipi is Context, IERC20, Ownable {
         antisniperEnabled = _antisniperEnabled;
     }
 
-    mapping (address => uint256) private lastTrade;
-    bool public tradingPaused = true;
-
     function enableTrading() external onlyOwner {
         tradingPaused = false;
     }
 
-    uint256 private _tBurnTotal;
-
-    uint256 public numTokensSellToAddToLiquidity = 5 * 10 ** 4 * 10 ** 9;
-
-    address payable public _LiquidityReciever;
-    address payable public _BurnWallet = payable(0x000000000000000000000000000000000000dEaD);
-    address payable public _marketingAddress = payable(0x4B01143107498CBa025Dc13C4283D5f4034016DC);
-
+    //WHALE-RESTICTION
     uint256 private _maxWalletSizePromile = 20;
     uint256 private _sellMaxTxAmountPromile = 5;
+    uint256 public _whaleSellThreshold = 1 * 10 ** 5 * 10**9;
 
     function setMaxWalletSize(uint256 promile) external onlyOwner() {
-        require(promile >= 1); // Cannot set lower than 0.1%
+        require(promile >= 20); // Cannot set lower than 2%
         _maxWalletSizePromile = promile;
     }
 
@@ -99,9 +100,10 @@ contract Fipi is Context, IERC20, Ownable {
         _sellMaxTxAmountPromile = promile;
     }
 
-
-    function setLPThreshold(uint256 numTokens) external onlyOwner() {
-        numTokensSellToAddToLiquidity = numTokens;
+    
+    function setWhaleSellThreshold(uint256 amount) external onlyOwner() {
+        require(amount >= _whaleSellThreshold);// Whale threshold can only be increased, we dont want to have a possibility to set tax 16% to everyone
+        _whaleSellThreshold = amount;
     }
 
     function setMarketingAddress(address marketingAddress) external onlyOwner() {
@@ -109,11 +111,6 @@ contract Fipi is Context, IERC20, Ownable {
     }
 
     
-    uint256 public _whaleSellThreshold = 1 * 10 ** 5 * 10**9;
-
-    function setWhaleSellThreshold(uint256 amount) external onlyOwner() {
-        _whaleSellThreshold = amount;
-    }
 
 
     event SwapAndLiquify(
@@ -137,7 +134,8 @@ contract Fipi is Context, IERC20, Ownable {
 
         // mainnet: 0x10ED43C718714eb63d5aA57B78B54704E256024E
         // testnet: 0xD99D1c33F9fC3444f8101754aBC46c52416550D1
-        IPancakeRouter02 _pancakeRouter = IPancakeRouter02(0xD99D1c33F9fC3444f8101754aBC46c52416550D1);
+        // pancaketestnet: 0x9Ac64Cc6e4415144C455BD8E4837Fea55603e5c3
+        IPancakeRouter02 _pancakeRouter = IPancakeRouter02(0x9Ac64Cc6e4415144C455BD8E4837Fea55603e5c3);
         pancakePair = IPancakeFactory(_pancakeRouter.factory()).createPair(address(this), _pancakeRouter.WETH());
         pancakeRouter = _pancakeRouter;
 
@@ -457,12 +455,11 @@ contract Fipi is Context, IERC20, Ownable {
 
 
         uint256 contractTokenBalance = balanceOf(address(this));
-        bool overMinTokenBalance = contractTokenBalance >= numTokensSellToAddToLiquidity;
+        bool overMinTokenBalance = contractTokenBalance >= lPThreshold;
         if (overMinTokenBalance && !inSwapAndLiquify && from != pancakePair && swapAndLiquifyEnabled) 
         {
-            swapAndLiquify(numTokensSellToAddToLiquidity);
+            swapAndLiquify(lPThreshold);
         }
-
         _feeMultiplier = 1;
 
         //IF PRIVILIDGED WALLET, NO FEES
@@ -643,6 +640,4 @@ contract Fipi is Context, IERC20, Ownable {
             swapAndLiquifyEnabled = true;
         }
     }
-
-
 }
