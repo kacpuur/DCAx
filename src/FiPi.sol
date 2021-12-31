@@ -33,11 +33,11 @@ contract Fipi is Context, IERC20, Ownable {
     uint256 private _rTotal = (MAX - (MAX % _tTotal));
     uint256 private _tFeeTotal;
 
-    string private constant _name = "FiPi Token Final Final";
-    string private constant _symbol = "FiPi4";
+    string private constant _name = "FiPi BEDZIE GIT";
+    string private constant _symbol = "FiPiGit";
     uint8 private constant _decimals = 9;
 
-     uint256 private _tBurnTotal;
+    uint256 private _tBurnTotal;
     address payable public _LiquidityReciever;
     address payable public _BurnWallet = payable(0x000000000000000000000000000000000000dEaD);
     address payable public _marketingAddress = payable(0x4B01143107498CBa025Dc13C4283D5f4034016DC);
@@ -138,7 +138,7 @@ contract Fipi is Context, IERC20, Ownable {
         IPancakeRouter02 _pancakeRouter = IPancakeRouter02(0x9Ac64Cc6e4415144C455BD8E4837Fea55603e5c3);
         pancakePair = IPancakeFactory(_pancakeRouter.factory()).createPair(address(this), _pancakeRouter.WETH());
         pancakeRouter = _pancakeRouter;
-
+        gasPriceLimit = 10 * 1 gwei;
         _isExcludedFromFee[owner()] = true;
         _isExcludedFromFee[address(this)] = true;
 
@@ -418,6 +418,16 @@ contract Fipi is Context, IERC20, Ownable {
         emit Approval(owner, spender, amount);
     }
 
+
+    function isNormalTransfer(address from, address to) private view returns (bool) {
+        return 
+            to != _BurnWallet
+            && to != address(0)
+            && from != address(this)
+            && _isExcludedFromFee[to] == false
+            && _isExcludedFromFee[from] == false;
+    }
+
     function _transfer(
         address from,
         address to,
@@ -427,32 +437,35 @@ contract Fipi is Context, IERC20, Ownable {
         require(to != address(0), "ERC20: transfer to the zero address");
         require(amount > 0, "Transfer amount must be greater than zero");
 
+        //IF THERE IS NOW LIQUIDITY YET AND ITS OWNER TRANSFER (OR LAUNCH PAD EXCLUDED FROM FEE) TO PANCAKE ITS LISING INIT TRANSACTION AND WE MARK IT 
+        if(!_hasLiqBeenAdded && _isExcludedFromFee[from] && to == pancakePair){
+            _hasLiqBeenAdded = true;
+            _liqAddBlock = block.number;
+            _liqAddStamp = block.timestamp;
+            swapAndLiquifyEnabled = true;
+        }
 
-        //ANTI-SNIPER AND LP CHECKER
-        if (antisniperEnabled && !_hasLiqBeenAdded){
-            _checkLiquidityAdd(from, to);
-            if (!_hasLiqBeenAdded && ((_isExcludedFromFee[from] || _isExcludedFromFee[to]) == false)) {
+        if(antisniperEnabled)
+        {
+            if (!_hasLiqBeenAdded && isNormalTransfer(from, to)){
                 revert("Only wallets marked by owner as excluded can transfer at this time."); //launchpads etc
             }
-        }
-        else if(antisniperEnabled){
-            //LIMIT GAS PRIZE TO PREVENT SNIPERS
-            require(tx.gasprice <= gasPriceLimit, "Gas price exceeds limit.");
-            //THERE IS A POSSIBILITY TO HOLD TRADING AFTER LISTING FOR A WHILE
-            require (tradingPaused == false, "Trading not yet enabled.");
-            if (from == pancakePair)
-            {
-                //CHECK IS NEXT TRANSACTION IS ON THE SAME BLOCK AS LAST TRANSACTION, AND IF SO BLOCK
-                require(lastTrade[to] != block.number);
-                lastTrade[to] = block.number;
-            }
-            else 
-            {
-                require(lastTrade[from] != block.number);
-                lastTrade[from] = block.number;
+            else if(isNormalTransfer(from, to)){
+                //LIMIT GAS PRIZE TO PREVENT SNIPERS
+                require(tx.gasprice <= gasPriceLimit, "Gas price exceeds limit.");
+                //THERE IS A POSSIBILITY TO HOLD TRADING AFTER LISTING FOR A WHILE
+                require (tradingPaused == false, "Trading not yet enabled.");
+                if (from == pancakePair){
+                    //CHECK IS NEXT TRANSACTION IS ON THE SAME BLOCK AS LAST TRANSACTION, AND IF SO BLOCK
+                    require(lastTrade[to] != block.number);
+                    lastTrade[to] = block.number;
+                }
+                else {
+                    require(lastTrade[from] != block.number);
+                    lastTrade[from] = block.number;
+                }
             }
         }
-
 
         uint256 contractTokenBalance = balanceOf(address(this));
         bool overMinTokenBalance = contractTokenBalance >= lPThreshold;
@@ -560,10 +573,6 @@ contract Fipi is Context, IERC20, Ownable {
 
     }
 
-
-
-
-
     function swapAndLiquify(uint256 contractTokenBalance) private lockTheSwap {
         
         // 0,25 is still in TOKENS
@@ -574,20 +583,19 @@ contract Fipi is Context, IERC20, Ownable {
 
         uint256 initialBalance = address(this).balance;
 
-        swapTokensForEth(threeQuaters); 
-
-
+        swapTokensForEth(threeQuaters);
         uint256 newBalance = address(this).balance.sub(initialBalance);
         
         //now we need 1/3 of this 0,75 swapped and pair with 0,25
         uint256 halfNewBalance = newBalance.div(3);
         addLiquidity(quater, halfNewBalance);
-
         uint256 leftForMarketing = newBalance.sub(halfNewBalance);
+
         _marketingAddress.transfer(leftForMarketing);
-        
         emit SwapAndLiquify(threeQuaters, newBalance, quater);
+
     }
+
     function swapTokensForEth(uint256 tokenAmount) private {
         // generate the uniswap pair path of token -> weth
         address[] memory path = new address[](2);
@@ -631,13 +639,5 @@ contract Fipi is Context, IERC20, Ownable {
         _LiquidityReciever.transfer(address(this).balance);
     }
 
-    function _checkLiquidityAdd(address from, address to) private {
-        require(!_hasLiqBeenAdded, "Liquidity already added and marked.");
-        if (_isExcludedFromFee[from] && to == pancakePair) {
-            _hasLiqBeenAdded = true;
-            _liqAddBlock = block.number;
-            _liqAddStamp = block.timestamp;
-            swapAndLiquifyEnabled = true;
-        }
-    }
+   
 }
