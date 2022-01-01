@@ -19,9 +19,12 @@ contract Privatesale is Ownable {
         uint256 fipiTokenPurcheased;
 
         uint256 fipiTokenClaimed;
+
+        uint256 releasesClaimed;
     }
 
     event Bought(address indexed account, uint256 indexed amount);
+    event Claimed(address indexed account, uint256 indexed amount);
 
     uint256 public tokenBNBRatio; //how much tokens for one bnb
     address payable public _BNBReciever;
@@ -30,6 +33,9 @@ contract Privatesale is Ownable {
     uint256 public tolalBNBRaised; 
     uint256 public hardCap; 
     
+    //uint256[] internal releaseDates = [1646136000,1648814400,1651406400,1654084800,1656676800];
+    uint256[] internal releaseDates = [1641078000,1641078900,1641079800,1641080700,1641081540];
+    address payable public _BurnWallet = payable(0x000000000000000000000000000000000000dEaD);
 
     IERC20 public binanceCoin;
     IERC20 public fiPiToken;
@@ -42,9 +48,28 @@ contract Privatesale is Ownable {
         participants[user].maxPurchaseAmountInBNB = maxPurchaseAmount;
     }
 
+
+    function addParticipantBatch(address[] memory _addresses, uint256 maxPurchaseAmount) external onlyOwner {
+        for (uint256 i = 0; i < _addresses.length; i++) 
+        {
+            participants[_addresses[i]].maxPurchaseAmountInBNB = maxPurchaseAmount;
+        }
+    }
+
     function revokeParticipant(address user) external onlyOwner {
         require(user != address(0));
         participants[user].maxPurchaseAmountInBNB = 0;
+    }
+
+    function nextReleaseIn() external view returns (uint256){
+        for (uint256 i = 0; i < releaseDates.length; i++) 
+        {
+            if (releaseDates[i] >= block.timestamp) 
+            {
+               return releaseDates[i];
+            }
+        }
+        return 0;
     }
 
     //0xc41359a5f17D497D0cfc888D86f6EC9b0396187F
@@ -55,6 +80,35 @@ contract Privatesale is Ownable {
         fiPiToken = _fipiToken;
         hardCap = 2 * 10 ** 18; //hardcap 200 BNB IN WEI
     } 
+
+    function claim() public
+    {
+        require(msg.sender != address(0));
+        Participant storage participant = participants[msg.sender];
+
+        require(participant.fipiTokenPurcheased > 0, "You did not bought anything!");
+
+        uint256 unlockedReleasesCount = 0;
+
+        for (uint256 i = 0; i < releaseDates.length; i++) 
+        {
+            if (releaseDates[i] <= block.timestamp) 
+            {
+               unlockedReleasesCount ++;
+            }
+        }
+
+        require(unlockedReleasesCount > participant.releasesClaimed, "You have already claimed all currently unlocked releases!");
+        uint256 allTokenstReleasedToParticipant = participant.fipiTokenPurcheased.mul(unlockedReleasesCount).div(5);
+        uint256 tokenToBeSendNow = allTokenstReleasedToParticipant.sub(participant.fipiTokenClaimed);
+        fiPiToken.transfer(msg.sender, tokenToBeSendNow);
+        participant.fipiTokenClaimed = allTokenstReleasedToParticipant;
+        participant.releasesClaimed = unlockedReleasesCount;
+
+
+        emit Claimed(msg.sender, tokenToBeSendNow);
+
+    }
 
     function buy() payable public 
     {
@@ -69,11 +123,7 @@ contract Privatesale is Ownable {
         require(participant.alreadyPurcheasedInBNB.add(amountTobuy) <= participant.maxPurchaseAmountInBNB, "You already bought your limit");
         
         uint256 numTokens = amountTobuy.div(10 ** 9).mul(tokenBNBRatio);
-        uint256 fipiBalanceOfContract = fiPiToken.balanceOf(address(this));
-        
-        require(numTokens <= fipiBalanceOfContract, "Not enough tokens for the transaction");
-         
-
+       
         tolalTokenSold = tolalTokenSold.add(numTokens);
         tolalBNBRaised = tolalBNBRaised.add(amountTobuy);
         participant.alreadyPurcheasedInBNB = participant.alreadyPurcheasedInBNB.add(amountTobuy);
@@ -98,8 +148,8 @@ contract Privatesale is Ownable {
     }
 
 
-    function withdrawLeftTokens() external onlyOwner {
-        fiPiToken.transfer(owner(), fiPiToken.balanceOf(address(this)));
+    function burnLeftTokens() external onlyOwner {
+        fiPiToken.transfer(_BurnWallet, fiPiToken.balanceOf(address(this)));
     }
     
     function withDrawBNB() public {
