@@ -34,15 +34,33 @@ contract Privatesale is Ownable {
     uint256 public hardCap; 
     
     //uint256[] internal releaseDates = [1646136000,1648814400,1651406400,1654084800,1656676800];
-    uint256[] internal releaseDates = [1641078000,1641078900,1641079800,1641080700,1641081540];
+    uint256[10] public releaseDates;
     address payable public _BurnWallet = payable(0x000000000000000000000000000000000000dEaD);
 
-    IERC20 public binanceCoin;
     IERC20 public fiPiToken;
 
+    
+    function setListingDate(uint256 listingDateTimestamp) external onlyOwner {
+        
+        //FLUSH EVERYTHING
+        delete releaseDates;
+
+        //ON START WE GIVE 20%
+        releaseDates[0] = listingDateTimestamp;
+        releaseDates[1] = listingDateTimestamp;
+        for(uint256 i = 2; i < 10; i++)
+        {
+            listingDateTimestamp = listingDateTimestamp.add(2592000);
+            releaseDates[i] = listingDateTimestamp;
+        }
+    }
 
     mapping(address => Participant) private participants;
 
+
+    function setTokenAdress(IERC20 _fipiToken) external onlyOwner {
+        fiPiToken = _fipiToken;
+    }
     function addParticipant(address user, uint256 maxPurchaseAmount) external onlyOwner {
         require(user != address(0));
         participants[user].maxPurchaseAmountInBNB = maxPurchaseAmount;
@@ -80,6 +98,8 @@ contract Privatesale is Ownable {
         fiPiToken = _fipiToken;
         hardCap = 2 * 10 ** 18; //hardcap 200 BNB IN WEI
     } 
+
+
 
     function claim() public
     {
@@ -157,24 +177,6 @@ contract Privatesale is Ownable {
         _BNBReciever.transfer(address(this).balance);
     }
 
-    function toString(uint256 value) internal pure returns (string memory) {
-
-        if (value == 0) {
-            return "0";
-        }
-        uint256 temp = value;
-        uint256 digits;
-        while (temp != 0) {
-            digits++;
-            temp /= 10;
-        }
-        bytes memory buffer = new bytes(digits);
-        while (value != 0) {
-            digits -= 1;
-            buffer[digits] = bytes1(uint8(48 + uint256(value % 10)));
-            value /= 10;
-        }
-        return string(buffer);
-    }
+    
 
 }
