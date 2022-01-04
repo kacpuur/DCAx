@@ -33,8 +33,8 @@ contract Fipi is Context, IERC20, Ownable {
     uint256 private _rTotal = (MAX - (MAX % _tTotal));
     uint256 private _tFeeTotal;
 
-    string private constant _name = "FiPi BEDZIE GIT";
-    string private constant _symbol = "FiPiGit";
+    string private constant _name = "FiPi Git2";
+    string private constant _symbol = "FiPiGit2";
     uint8 private constant _decimals = 9;
 
     uint256 private _tBurnTotal;
@@ -45,6 +45,12 @@ contract Fipi is Context, IERC20, Ownable {
 
     //FEES 2% REFLECTION, 2% LP, 2% BURN, 2% LOTTERY POOL, ALL 2%
     uint256 public _taxFee = 2;
+
+    //FOR CEX LISTING OR SOMETHING IF WE GET BIG ENOUGH
+    function disableTaxFee() external onlyOwner() {
+        _taxFee = 0;
+    }
+
     uint256 private _feeMultiplier = 1;
 
     //LP
