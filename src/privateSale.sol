@@ -62,7 +62,7 @@ contract Privatesale is Ownable {
             //30 days 2592000
             //6h for tests 21600
             //1h for tests 3600
-            listingDateTimestamp = listingDateTimestamp.add(3600);
+            listingDateTimestamp = listingDateTimestamp.add(2592000);
             releaseDates[i] = listingDateTimestamp;
         }
     }
@@ -122,7 +122,7 @@ contract Privatesale is Ownable {
 
         uint256 unlockedReleasesCount = 0;
 
-        require(releaseDates[0] > 0, 'Listing date is not yet provided!');
+        require(releaseDates[0] > 0, "Listing date is not yet provided!");
 
         for (uint256 i = 0; i < releaseDates.length; i++) 
         {
@@ -132,7 +132,7 @@ contract Privatesale is Ownable {
             }
         }
 
-        require(unlockedReleasesCount > participant.releasesClaimed, "You have already claimed all currently unlocked releases!");
+        require(unlockedReleasesCount > participant.releasesClaimed, "You have nothing left to claim wait for next release.");
         uint256 allTokenstReleasedToParticipant = participant.fipiTokenPurcheased.mul(unlockedReleasesCount).div(10);
         uint256 tokenToBeSendNow = allTokenstReleasedToParticipant.sub(participant.fipiTokenClaimed);
         fiPiToken.transfer(msg.sender, tokenToBeSendNow);
