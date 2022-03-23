@@ -43,12 +43,15 @@ contract Fipi is Context, IERC20, Ownable {
     address payable public _marketingAddress = payable(0x4B01143107498CBa025Dc13C4283D5f4034016DC);
 
 
-    //FEES 2% REFLECTION, 2% LP, 2% BURN, 2% LOTTERY POOL, ALL 2%
-    uint256 public _taxFee = 2;
+    //FEES 1% REFLECTION, 1% LP, 1% BURN
+    uint256 public _taxFee = 1;
+    //2% Marketing
+    uint256 public _marketing = 2;
 
     //FOR CEX LISTING OR SOMETHING IF WE GET BIG ENOUGH
     function disableTaxFee() external onlyOwner() {
         _taxFee = 0;
+        _marketing = 0;
     }
 
     uint256 private _feeMultiplier = 1;
@@ -289,7 +292,7 @@ contract Fipi is Context, IERC20, Ownable {
             uint256 rAmount = tAmount.mul(currentRate);
             return rAmount;
         } else {
-            (uint256 tTransferAmount, ) = _getTValues(tAmount);
+            (uint256 tTransferAmount, ,) = _getTValues(tAmount);
             uint256 rTransferAmount = tTransferAmount.mul(currentRate);
             return rTransferAmount;
         }
@@ -359,11 +362,13 @@ contract Fipi is Context, IERC20, Ownable {
     view
     returns(
         uint256,
+        uint256,
         uint256
     ) {
         uint256 tFee = tAmount.mul(_taxFee * _feeMultiplier).div(100);
-        uint256 tTransferAmount = tAmount.sub(tFee).sub(tFee).sub(tFee).sub(tFee);
-        return (tTransferAmount, tFee);
+        uint256 tMarketing = tAmount.mul(_marketing * _feeMultiplier).div(100);
+        uint256 tTransferAmount = tAmount.sub(tFee).sub(tFee).sub(tFee).sub(tMarketing);
+        return (tTransferAmount, tFee, tMarketing);
     }
 
 
@@ -530,7 +535,8 @@ contract Fipi is Context, IERC20, Ownable {
         (
             
             uint256 tTransferAmount,
-            uint256 tFee
+            uint256 tFee,
+            uint256 tMarketing
         ) = _getTValues(amount);
         
         uint256 currentRate = _getRate();
@@ -570,7 +576,7 @@ contract Fipi is Context, IERC20, Ownable {
 
         
         if (tFee > 0) {
-            _takeLiquidity(tFee * 2); //HERE COMES TIMES 2 BECAUSE ITS ALSO MARKETING
+            _takeLiquidity(tFee + tMarketing); //HERE COMES TIMES 2 BECAUSE ITS ALSO MARKETING
             _takeBurn(tFee);
             _reflectFee(rFee, tFee);
             emit Transfer(sender, _BurnWallet, tFee);
@@ -582,7 +588,7 @@ contract Fipi is Context, IERC20, Ownable {
     function swapAndLiquify(uint256 contractTokenBalance) private lockTheSwap {
         
         // 0,25 is still in TOKENS
-        uint256 quater = contractTokenBalance.div(4);
+        uint256 quater = contractTokenBalance.div(8);
         
         //0,75 will be converted to BNB
         uint256 threeQuaters = contractTokenBalance.sub(quater);
@@ -593,7 +599,7 @@ contract Fipi is Context, IERC20, Ownable {
         uint256 newBalance = address(this).balance.sub(initialBalance);
         
         //now we need 1/3 of this 0,75 swapped and pair with 0,25
-        uint256 halfNewBalance = newBalance.div(3);
+        uint256 halfNewBalance = newBalance.div(7);
         addLiquidity(quater, halfNewBalance);
         uint256 leftForMarketing = newBalance.sub(halfNewBalance);
 
