@@ -114,8 +114,11 @@ contract Fipi is Context, IERC20, Ownable {
         _marketingAddress = payable(marketingAddress);
     }
 
+    function setLiquidityAdress(address liqAddress) external onlyOwner() {
+        _LiquidityReciever = payable(liqAddress);
+    }
 
-    
+
 
     event Burn(address BurnWallet, uint256 tokensBurned);
 
