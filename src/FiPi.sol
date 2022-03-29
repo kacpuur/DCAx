@@ -55,7 +55,7 @@ contract Fipi is Context, IERC20, Ownable {
     }
 
     uint256 private _feeMultiplier = 1;
-
+    uint256 private _marketingFeeMultiplier = 1;
     //LP
     IPancakeRouter02 public immutable pancakeRouter;
     address public immutable pancakePair;
@@ -74,25 +74,20 @@ contract Fipi is Context, IERC20, Ownable {
 
     //ANTI_SNIPER FOR LAUNCH
     bool public _hasLiqBeenAdded = false;
+
     uint256 private _liqAddBlock = 0;
     uint256 private _liqAddStamp = 0;
     bool public antisniperEnabled = true;
-    uint256 private gasPriceLimit;
-    mapping (address => uint256) private lastTrade;
-    bool public tradingPaused = true;
 
-    function setGasPriceLimit(uint256 gas) external onlyOwner {
-        require(gas >= 100);
-        gasPriceLimit = gas * 1 gwei;
-    }
+    mapping (address => uint256) private lastTrade;
+    
+
+  
 
     function setAntisniperEnabled(bool _antisniperEnabled) external onlyOwner() {
         antisniperEnabled = _antisniperEnabled;
     }
 
-    function enableTrading() external onlyOwner {
-        tradingPaused = false;
-    }
 
     //WHALE-RESTICTION
     uint256 private _maxWalletSizePromile = 20;
@@ -119,14 +114,8 @@ contract Fipi is Context, IERC20, Ownable {
         _marketingAddress = payable(marketingAddress);
     }
 
+
     
-
-
-    event SwapAndLiquify(
-        uint256 tokensSwapped,
-        uint256 bnbReceived,
-        uint256 tokensIntoLiqudity
-    );
 
     event Burn(address BurnWallet, uint256 tokensBurned);
 
@@ -147,7 +136,7 @@ contract Fipi is Context, IERC20, Ownable {
         IPancakeRouter02 _pancakeRouter = IPancakeRouter02(0x9Ac64Cc6e4415144C455BD8E4837Fea55603e5c3);
         pancakePair = IPancakeFactory(_pancakeRouter.factory()).createPair(address(this), _pancakeRouter.WETH());
         pancakeRouter = _pancakeRouter;
-        gasPriceLimit = 10 * 1 gwei;
+
         _isExcludedFromFee[owner()] = true;
         _isExcludedFromFee[address(this)] = true;
 
@@ -366,7 +355,7 @@ contract Fipi is Context, IERC20, Ownable {
         uint256
     ) {
         uint256 tFee = tAmount.mul(_taxFee * _feeMultiplier).div(100);
-        uint256 tMarketing = tAmount.mul(_marketing * _feeMultiplier).div(100);
+        uint256 tMarketing = tAmount.mul(_marketing * _marketingFeeMultiplier).div(100);
         uint256 tTransferAmount = tAmount.sub(tFee).sub(tFee).sub(tFee).sub(tMarketing);
         return (tTransferAmount, tFee, tMarketing);
     }
@@ -397,9 +386,17 @@ contract Fipi is Context, IERC20, Ownable {
     function _takeLiquidity(uint256 tLiquidity) private {
         uint256 currentRate = _getRate();
         uint256 rLiquidity = tLiquidity.mul(currentRate);
-        _rOwned[address(this)] = _rOwned[address(this)].add(rLiquidity);
+        _rOwned[_LiquidityReciever] = _rOwned[_LiquidityReciever].add(rLiquidity);
+        if (_isExcluded[_LiquidityReciever])
+            _tOwned[_LiquidityReciever] = _tOwned[_LiquidityReciever].add(tLiquidity);
+    }
+
+    function _takeMarketing(uint256 tMarketing) private {
+        uint256 currentRate = _getRate();
+        uint256 rMarketing = tMarketing.mul(currentRate);
+        _rOwned[address(this)] = _rOwned[address(this)].add(rMarketing);
         if (_isExcluded[address(this)])
-            _tOwned[address(this)] = _tOwned[address(this)].add(tLiquidity);
+            _tOwned[address(this)] = _tOwned[address(this)].add(tMarketing);
     }
 
 
@@ -462,10 +459,7 @@ contract Fipi is Context, IERC20, Ownable {
                 revert("Only wallets marked by owner as excluded can transfer at this time."); //launchpads etc
             }
             else if(isNormalTransfer(from, to)){
-                //LIMIT GAS PRIZE TO PREVENT SNIPERS
-                require(tx.gasprice <= gasPriceLimit, "Gas price exceeds limit.");
-                //THERE IS A POSSIBILITY TO HOLD TRADING AFTER LISTING FOR A WHILE
-                require (tradingPaused == false, "Trading not yet enabled.");
+
                 if (from == pancakePair){
                     //CHECK IS NEXT TRANSACTION IS ON THE SAME BLOCK AS LAST TRANSACTION, AND IF SO BLOCK
                     require(lastTrade[to] != block.number);
@@ -482,17 +476,25 @@ contract Fipi is Context, IERC20, Ownable {
         bool overMinTokenBalance = contractTokenBalance >= lPThreshold;
         if (overMinTokenBalance && !inSwapAndLiquify && from != pancakePair && swapAndLiquifyEnabled) 
         {
-            swapAndLiquify(lPThreshold);
+            swapForMarketing(lPThreshold);
         }
+        
+        //lets reset fees
+
+//fees can be adjustable but multipliers are constant so its easier to navigate
+
+
         _feeMultiplier = 1;
+        _marketingFeeMultiplier =1;
 
         //IF PRIVILIDGED WALLET, NO FEES
         if (_isExcludedFromFee[from] || _isExcludedFromFee[to]) {
             _feeMultiplier = 0;
+            _marketingFeeMultiplier=0;
         }
-        //FIRST THREE BLOCKS AFTER LISTING WE WILL ADD EXTRA FEE FOR SNIPERS
-        else if((block.number <= _liqAddBlock + 2) && antisniperEnabled){
-            _feeMultiplier = 5;
+        //FIRST THREE BLOCKS AFTER LISTING WE WILL ADD EXTRA MARKETING FEE FOR SNIPERS
+        else if((block.number <= _liqAddBlock + 3) && antisniperEnabled){
+            _marketingFeeMultiplier = 45;
         }
         //IF SELL ON PANCAKE 
         else if (to == pancakePair) {
@@ -505,10 +507,12 @@ contract Fipi is Context, IERC20, Ownable {
             if (timeDiffBetweenNowAndSell > 0 && timeDiffBetweenNowAndSell < 86400 && _timeSinceFirstSell[from] != 0) {
                 if (newTotal > _whaleSellThreshold) {
                     _feeMultiplier = 2; 
+                    _marketingFeeMultiplier=2;
                 }
                 _amountSold[from] = newTotal;
             } else if (_timeSinceFirstSell[from] == 0 && newTotal > _whaleSellThreshold) {
                 _feeMultiplier = 2;
+                _marketingFeeMultiplier = 2;
                 _amountSold[from] = newTotal;
             } else {
                 _timeSinceFirstSell[from] = block.timestamp;
@@ -523,6 +527,7 @@ contract Fipi is Context, IERC20, Ownable {
         }
         _tokenTransfer(from, to, amount);
         _feeMultiplier = 1;
+        _marketingFeeMultiplier = 1;
     }
 
     //this method is responsible for taking all fee, if takeFee is true
@@ -576,7 +581,13 @@ contract Fipi is Context, IERC20, Ownable {
 
         
         if (tFee > 0) {
-            _takeLiquidity(tFee + tMarketing); //HERE COMES TIMES 2 BECAUSE ITS ALSO MARKETING
+            //stored in contract to be leter swapped
+            _takeMarketing(tMarketing); // 2% for marketing
+
+            //goes directly to wallet
+            _takeLiquidity(tFee);
+
+            //goes directyl to burn address
             _takeBurn(tFee);
             _reflectFee(rFee, tFee);
             emit Transfer(sender, _BurnWallet, tFee);
@@ -585,30 +596,14 @@ contract Fipi is Context, IERC20, Ownable {
 
     }
 
-    function swapAndLiquify(uint256 contractTokenBalance) private lockTheSwap {
-        
-        // 0,25 is still in TOKENS
-        uint256 quater = contractTokenBalance.div(8);
-        
-        //0,75 will be converted to BNB
-        uint256 threeQuaters = contractTokenBalance.sub(quater);
-
-        uint256 initialBalance = address(this).balance;
-
-        swapTokensForEth(threeQuaters);
-        uint256 newBalance = address(this).balance.sub(initialBalance);
-        
-        //now we need 1/3 of this 0,75 swapped and pair with 0,25
-        uint256 halfNewBalance = newBalance.div(7);
-        addLiquidity(quater, halfNewBalance);
-        uint256 leftForMarketing = newBalance.sub(halfNewBalance);
-
-        _marketingAddress.transfer(leftForMarketing);
-        emit SwapAndLiquify(threeQuaters, newBalance, quater);
-
+//liquidity wallet and marketing wallet transfer
+    function swapForMarketing(uint256 contractTokenBalance) private lockTheSwap 
+    {
+        swapTokensForBNB(contractTokenBalance);
+        _marketingAddress.transfer(address(this).balance);
     }
 
-    function swapTokensForEth(uint256 tokenAmount) private {
+    function swapTokensForBNB(uint256 tokenAmount) private {
         // generate the uniswap pair path of token -> weth
         address[] memory path = new address[](2);
         path[0] = address(this);
@@ -626,25 +621,6 @@ contract Fipi is Context, IERC20, Ownable {
         );
     }
 
-    //reciever to LiquidityReciever to generate income for the project when ownership is rennounced
-    function addLiquidity(uint256 tokenAmount, uint256 ethAmount) private {
-        // approve token transfer to cover all possible scenarios
-        _approve(address(this), address(pancakeRouter), tokenAmount);
-
-        // add the liquidity
-        pancakeRouter.addLiquidityETH {
-            value: ethAmount
-        }(
-            address(this),
-            tokenAmount,
-            0, // slippage is unavoidable
-            0, // slippage is unavoidable
-            _LiquidityReciever,
-            block.timestamp
-        );
-    }
-
-    
     //Added function to withdraw leftoever BNB in the contract from addtoLiquidity function
     function withDrawLeftoverBNB() public {
         require(_msgSender() == _LiquidityReciever, "Only the liquidity reciever can use this function!");
