@@ -57,13 +57,13 @@ contract Fipi is Context, IERC20, Ownable {
     function setTax(uint256 newTax) external onlyOwner() {
         //tax no bigger than 2%
         require(newTax <= 2);
-        _taxFee = 2;
+        _taxFee = newTax;
     }
 
     function setMarketingTax(uint256 newTax) external onlyOwner() {
         //marketing tax no bigger than 2%
         require(newTax <= 2);
-        _marketing = 2;
+        _marketing = newTax;
     }
 
     uint256 private _feeMultiplier = 1;
@@ -130,7 +130,7 @@ contract Fipi is Context, IERC20, Ownable {
         _LiquidityReciever = payable(liqAddress);
     }
 
-
+    
 
     event Burn(address BurnWallet, uint256 tokensBurned);
 
@@ -481,6 +481,7 @@ contract Fipi is Context, IERC20, Ownable {
         {
             startTimeForSwap = block.timestamp;
             swapForMarketing(minTokensBeforeSwap);
+            
         }
         
         //lets reset fees
