@@ -29,12 +29,12 @@ contract Fipi is Context, IERC20, Ownable {
 
     uint256 private constant MAX = ~uint256(0);
 
-    uint256 private constant _tTotal = 21 * 10 ** 6 * 10 ** 9;
+    uint256 private constant _tTotal = 60 * 10 ** 6 * 10 ** 9;
     uint256 private _rTotal = (MAX - (MAX % _tTotal));
     uint256 private _tFeeTotal;
 
-    string private constant _name = "FiPi Git2";
-    string private constant _symbol = "FiPiGit2";
+    string private constant _name = "Test_1";
+    string private constant _symbol = "Test1";
     uint8 private constant _decimals = 9;
 
     uint256 private _tBurnTotal;
@@ -54,22 +54,34 @@ contract Fipi is Context, IERC20, Ownable {
         _marketing = 0;
     }
 
+    function setTax(uint256 newTax) external onlyOwner() {
+        //tax no bigger than 2%
+        require(newTax <= 2);
+        _taxFee = 2;
+    }
+
+    function setMarketingTax(uint256 newTax) external onlyOwner() {
+        //marketing tax no bigger than 2%
+        require(newTax <= 2);
+        _marketing = 2;
+    }
+
     uint256 private _feeMultiplier = 1;
     uint256 private _marketingFeeMultiplier = 1;
     //LP
     IPancakeRouter02 public immutable pancakeRouter;
     address public immutable pancakePair;
-    uint256 public lPThreshold = 5 * 10 ** 4 * 10 ** 9;
+    uint256 public minTokensBeforeSwap = 5 * 10 ** 5 * 10 ** 9;
     bool inSwapAndLiquify;
     bool public swapAndLiquifyEnabled = false;
-
-    function setSwapAndLiquifyEnabled(bool _enabled) external onlyOwner {
-        swapAndLiquifyEnabled = _enabled;
-    }
+    uint256 private startTimeForSwap;
+    uint256 private minTimeBetweenSwaps;
 
     
-    function setLPThreshold(uint256 numTokens) external onlyOwner() {
-        lPThreshold = numTokens;
+    function setSwapAndLiquify(bool _state, uint _minTimeBetweenSwaps, uint _minimumTokensBeforeSwap) external onlyOwner {
+        swapAndLiquifyEnabled = _state;
+        minTimeBetweenSwaps = _minTimeBetweenSwaps;
+        minTokensBeforeSwap = _minimumTokensBeforeSwap;
     }
 
     //ANTI_SNIPER FOR LAUNCH
@@ -106,7 +118,7 @@ contract Fipi is Context, IERC20, Ownable {
 
     
     function setWhaleSellThreshold(uint256 amount) external onlyOwner() {
-        require(amount >= _whaleSellThreshold);// Whale threshold can only be increased, we dont want to have a possibility to set tax 16% to everyone
+        require(amount >= 100000);// Whale threshold can only be higher than 10000 (initial value is 100000), we dont want to have a possibility to set tax 16% to everyone
         _whaleSellThreshold = amount;
     }
 
@@ -257,19 +269,7 @@ contract Fipi is Context, IERC20, Ownable {
     }
     
 
-    //Added some , for the get values since its returning more variables now
-    function deliver(uint256 tAmount) public {
-        address sender = _msgSender();
-        require(
-            !_isExcluded[sender],
-            "Excluded addresses cannot call this function"
-        );
-        uint256 currentRate = _getRate();
-        uint256 rAmount = tAmount.mul(currentRate);
-        _rOwned[sender] = _rOwned[sender].sub(rAmount);
-        _rTotal = _rTotal.sub(rAmount);
-        _tFeeTotal = _tFeeTotal.add(tAmount);
-    }
+   
 
     function reflectionFromToken(uint256 tAmount, bool deductTransferFee)
     external
@@ -473,10 +473,11 @@ contract Fipi is Context, IERC20, Ownable {
         }
 
         uint256 contractTokenBalance = balanceOf(address(this));
-        bool overMinTokenBalance = contractTokenBalance >= lPThreshold;
-        if (overMinTokenBalance && !inSwapAndLiquify && from != pancakePair && swapAndLiquifyEnabled) 
+        bool overMinTokenBalance = contractTokenBalance >= minTokensBeforeSwap;
+        if (overMinTokenBalance && !inSwapAndLiquify && from != pancakePair && swapAndLiquifyEnabled && startTimeForSwap + minTimeBetweenSwaps <= block.timestamp) 
         {
-            swapForMarketing(lPThreshold);
+            startTimeForSwap = block.timestamp;
+            swapForMarketing(minTokensBeforeSwap);
         }
         
         //lets reset fees
