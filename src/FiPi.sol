@@ -4,7 +4,7 @@ import './address.sol';
 import './pancake.sol';
 import './context.sol';
 
-pragma solidity ^0.6.12;
+pragma solidity ^0.8.7;
 // SPDX-License-Identifier: MIT
 
 
@@ -140,7 +140,7 @@ contract Fipi is Context, IERC20, Ownable {
         inSwapAndLiquify = false;
     }
 
-    constructor() public {
+    constructor() {
 
         _rOwned[_msgSender()] = _rTotal;
         _LiquidityReciever = payable(_msgSender());
@@ -173,7 +173,7 @@ contract Fipi is Context, IERC20, Ownable {
         return _decimals;
     }
 
-    function totalSupply() public view override returns(uint256) {
+    function totalSupply() public pure override returns(uint256) {
         return _tTotal;
     }
 
@@ -498,6 +498,7 @@ contract Fipi is Context, IERC20, Ownable {
             _marketingFeeMultiplier=0;
         }
         //FIRST THREE BLOCKS AFTER LISTING WE WILL ADD EXTRA MARKETING FEE FOR SNIPERS
+        
         else if((block.number <= _liqAddBlock + 3) && antisniperEnabled){
             _marketingFeeMultiplier = 45;
         }
