@@ -20,8 +20,6 @@ contract Privatesale is Ownable {
 
         uint256 fipiTokenClaimed;
 
-        uint256 releasesClaimed;
-
         bool refparticipant;
     }
 
@@ -48,6 +46,8 @@ contract Privatesale is Ownable {
 
     //uint256[] internal releaseDates = [1646136000,1648814400,1651406400,1654084800,1656676800];
     uint256[10] public releaseDates;
+    uint256 public tgeDate;
+
     address payable public _BurnWallet = payable(0x000000000000000000000000000000000000dEaD);
 
     IERC20 public fiPiToken;
@@ -57,11 +57,9 @@ contract Privatesale is Ownable {
         
         //FLUSH EVERYTHING
         delete releaseDates;
-
-        //ON START WE GIVE 30%
-        releaseDates[0] = listingDateTimestamp;
-        releaseDates[1] = listingDateTimestamp;
-        for(uint256 i = 2; i < 10; i++)
+        tgeDate = listingDateTimestamp;
+        //WE RELEASE TOKENS FOR 10 MONTHS
+        for(uint256 i = 0; i < 10; i++)
         {
             //30 days 2592000
             //6h for tests 21600
@@ -211,8 +209,16 @@ contract Privatesale is Ownable {
 
         uint256 unlockedReleasesCount = 0;
 
-        require(releaseDates[0] > 0, "Listing date is not yet provided!");
+        require(tgeDate > 0, "Listing date is not yet provided!");
+        require(block.timestamp > tgeDate, "Token is not yet listed");
 
+        //we start from 30% at tge
+        uint256 tokenClaimable = participant.fipiTokenPurcheased.mul(3).div(10);
+
+        //70% is vested
+        uint256 restTokensVested = participant.fipiTokenPurcheased.sub(tokenClaimable);
+
+        //now we check how many relesaes is done
         for (uint256 i = 0; i < releaseDates.length; i++) 
         {
             if (releaseDates[i] <= block.timestamp) 
@@ -221,17 +227,19 @@ contract Privatesale is Ownable {
             }
         }
 
-        require(unlockedReleasesCount > participant.releasesClaimed, "You have nothing left to claim wait for next release.");
-        uint256 allTokenstReleasedToParticipant = participant.fipiTokenPurcheased.mul(unlockedReleasesCount).div(10);
-        uint256 tokenToBeSendNow = allTokenstReleasedToParticipant.sub(participant.fipiTokenClaimed);
+
+        //we add everything released to initial 30%
+        tokenClaimable = tokenClaimable.add(restTokensVested.mul(unlockedReleasesCount).div(10));
+
+        require(tokenClaimable > participant.fipiTokenClaimed, "You have nothing left to claim wait for next release.");
+
+        uint256 tokenToBeSendNow = tokenClaimable.sub(participant.fipiTokenClaimed);
+        
         fiPiToken.transfer(msg.sender, tokenToBeSendNow);
-        participant.fipiTokenClaimed = allTokenstReleasedToParticipant;
-        participant.releasesClaimed = unlockedReleasesCount;
+        participant.fipiTokenClaimed = tokenClaimable;
 
         emit Claimed(msg.sender, tokenToBeSendNow);
 
     }
-
-    
 
 }
