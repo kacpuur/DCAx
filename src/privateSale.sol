@@ -77,19 +77,15 @@ contract Privatesale is Ownable {
     function setTokenAdress(address _fipiToken) external onlyOwner {
         fiPiToken = IERC20(_fipiToken);
     }
-    function addParticipant(address user, uint256 maxPurchaseAmount) external onlyOwner {
+
+    function addParticipant(address user, uint256 maxPurchaseAmount, bool isReferalActive) external onlyOwner {
         require(user != address(0));
         participants[user].maxPurchaseAmountInBUSD = maxPurchaseAmount;
-    }
-
-
-    function getRefLink() external {
-        participants[msg.sender].refparticipant = true;
+        participants[user].refparticipant = isReferalActive;
     }
 
     function addParticipantBatch(address[] memory _addresses, uint256 maxPurchaseAmount) external onlyOwner {
-        for (uint256 i = 0; i < _addresses.length; i++) 
-        {
+        for (uint256 i = 0; i < _addresses.length; i++){
             participants[_addresses[i]].maxPurchaseAmountInBUSD = maxPurchaseAmount;
         }
     }
@@ -112,53 +108,6 @@ contract Privatesale is Ownable {
             }
         }
         return 0;
-    }
-
-    function _getTokenAmount(uint256 _busdAmount) internal view returns (uint256) {
-        return _busdAmount / tokenBUSDPrize * divisor / (10**9);
-    }
-
-    constructor(uint256 _hardcap, uint256 _privateSaleStartDate, address _busd) {
-        busd = IERC20(_busd);
-        _BNBReciever = payable(_msgSender());
-        //its 0,06 so we need to divide by 100 later on
-        tokenBUSDPrize = 6;
-        divisor = 100;
-        hardCap = _hardcap; //hardcap 200 BNB IN WEI
-        //Wed, 5 Jan 2022 15:00:00 GMT - 1641394800
-        privateSaleStartDate = _privateSaleStartDate;
-    } 
-
-
-
-    function claim() public
-    {
-        require(msg.sender != address(0));
-        Participant storage participant = participants[msg.sender];
-
-        require(participant.fipiTokenPurcheased > 0, "You did not bought anything!");
-
-        uint256 unlockedReleasesCount = 0;
-
-        require(releaseDates[0] > 0, "Listing date is not yet provided!");
-
-        for (uint256 i = 0; i < releaseDates.length; i++) 
-        {
-            if (releaseDates[i] <= block.timestamp) 
-            {
-               unlockedReleasesCount ++;
-            }
-        }
-
-        require(unlockedReleasesCount > participant.releasesClaimed, "You have nothing left to claim wait for next release.");
-        uint256 allTokenstReleasedToParticipant = participant.fipiTokenPurcheased.mul(unlockedReleasesCount).div(10);
-        uint256 tokenToBeSendNow = allTokenstReleasedToParticipant.sub(participant.fipiTokenClaimed);
-        fiPiToken.transfer(msg.sender, tokenToBeSendNow);
-        participant.fipiTokenClaimed = allTokenstReleasedToParticipant;
-        participant.releasesClaimed = unlockedReleasesCount;
-
-        emit Claimed(msg.sender, tokenToBeSendNow);
-
     }
 
     function isWhitelisted(address account) external view returns (bool){
@@ -185,6 +134,32 @@ contract Privatesale is Ownable {
         require(_msgSender() == _BNBReciever, "Only the bnb reciever can use this function!");
         _BNBReciever.transfer(address(this).balance);
     }
+
+
+    function _getTokenAmount(uint256 _busdAmount) internal view returns (uint256) {
+        return _busdAmount / tokenBUSDPrize * divisor / (10**9);
+    }
+
+    constructor(uint256 _hardcap, uint256 _privateSaleStartDate, address _busd) {
+        busd = IERC20(_busd);
+        _BNBReciever = payable(_msgSender());
+        //its 0,06 so we need to divide by 100 later on
+        tokenBUSDPrize = 6;
+        divisor = 100;
+        hardCap = _hardcap; //hardcap 200 BNB IN WEI
+        //Wed, 5 Jan 2022 15:00:00 GMT - 1641394800
+        privateSaleStartDate = _privateSaleStartDate;
+    } 
+
+    function getRefLink() external {
+        Participant storage participant = participants[msg.sender];
+        require(msg.sender != address(0));
+        require(participant.maxPurchaseAmountInBUSD > 0, "Only whitelisted wallets can get reflink");
+        participant.refparticipant = true;
+    }
+
+    
+
 
     function buyTokens(uint256 _amount, address _referrer) external 
     {
@@ -215,15 +190,47 @@ contract Privatesale is Ownable {
 
         busd.transferFrom(msg.sender, address(this), _amount);
         
-        
-        
         tolalTokenSold = tolalTokenSold.add(tokenPurcheased);
         tolalBUSDRaised = tolalBUSDRaised.add(_amount);
         participant.alreadyPurcheasedInBUSD = participant.alreadyPurcheasedInBUSD.add(_amount);
         participant.fipiTokenPurcheased = participant.fipiTokenPurcheased.add(tokenPurcheased.add(tokenToRefferer));
 
+        if(tokenToRefferer > 0){
+            participants[_referrer].fipiTokenPurcheased.add(tokenToRefferer);
+        }
+
         emit Bought(msg.sender, _amount);
     }   
+
+    function claim() public
+    {
+        require(msg.sender != address(0));
+        Participant storage participant = participants[msg.sender];
+
+        require(participant.fipiTokenPurcheased > 0, "You did not bought anything!");
+
+        uint256 unlockedReleasesCount = 0;
+
+        require(releaseDates[0] > 0, "Listing date is not yet provided!");
+
+        for (uint256 i = 0; i < releaseDates.length; i++) 
+        {
+            if (releaseDates[i] <= block.timestamp) 
+            {
+               unlockedReleasesCount ++;
+            }
+        }
+
+        require(unlockedReleasesCount > participant.releasesClaimed, "You have nothing left to claim wait for next release.");
+        uint256 allTokenstReleasedToParticipant = participant.fipiTokenPurcheased.mul(unlockedReleasesCount).div(10);
+        uint256 tokenToBeSendNow = allTokenstReleasedToParticipant.sub(participant.fipiTokenClaimed);
+        fiPiToken.transfer(msg.sender, tokenToBeSendNow);
+        participant.fipiTokenClaimed = allTokenstReleasedToParticipant;
+        participant.releasesClaimed = unlockedReleasesCount;
+
+        emit Claimed(msg.sender, tokenToBeSendNow);
+
+    }
 
     
 
