@@ -64,7 +64,7 @@ contract Privatesale is Ownable {
             //30 days 2592000
             //6h for tests 21600
             //1h for tests 3600
-            listingDateTimestamp = listingDateTimestamp.add(2592000);
+            listingDateTimestamp = listingDateTimestamp.add(3600);
             releaseDates[i] = listingDateTimestamp;
         }
     }
@@ -128,9 +128,9 @@ contract Privatesale is Ownable {
         fiPiToken.transfer(_BurnWallet, fiPiToken.balanceOf(address(this)));
     }
     
-    function withDrawBNB() public {
-        require(_msgSender() == _BNBReciever, "Only the bnb reciever can use this function!");
-        _BNBReciever.transfer(address(this).balance);
+    function withDrawBUSD() public {
+        require(_msgSender() == _BNBReciever, "Only the busd reciever can use this function!");
+        busd.transfer(_BNBReciever, IERC20(busd).balanceOf(address(this)));
     }
 
 
@@ -174,7 +174,10 @@ contract Privatesale is Ownable {
         require(isPresaleActive == true, "Private sale has ended!");
         require(tolalBUSDRaised.add(_amount) <= hardCap, "Hardcap exceeded");
         require(participant.maxPurchaseAmountInBUSD > 0, "You are not on whitelist");
-        require(participant.maxPurchaseAmountInBUSD.add(_amount) <= participant.alreadyPurcheasedInBUSD, "You already bought your limit");
+        require(participant.alreadyPurcheasedInBUSD.add(_amount) <= participant.maxPurchaseAmountInBUSD, "You already bought your limit");
+        uint256 allowance = busd.allowance(msg.sender, address(this));
+        require(allowance >= _amount, "Check the token allowance");
+
 
         uint256 tokenPurcheased = _getTokenAmount(_amount);
         uint256 tokenToRefferer = 0;
@@ -191,11 +194,13 @@ contract Privatesale is Ownable {
         tolalTokenSold = tolalTokenSold.add(tokenPurcheased);
         tolalBUSDRaised = tolalBUSDRaised.add(_amount);
         participant.alreadyPurcheasedInBUSD = participant.alreadyPurcheasedInBUSD.add(_amount);
-        participant.fipiTokenPurcheased = participant.fipiTokenPurcheased.add(tokenPurcheased.add(tokenToRefferer));
+
 
         if(tokenToRefferer > 0){
-            participants[_referrer].fipiTokenPurcheased.add(tokenToRefferer);
+            tokenPurcheased = tokenPurcheased.add(tokenToRefferer);
+            participants[_referrer].fipiTokenPurcheased = participants[_referrer].fipiTokenPurcheased.add(tokenToRefferer);
         }
+        participant.fipiTokenPurcheased = participant.fipiTokenPurcheased.add(tokenPurcheased);
 
         emit Bought(msg.sender, _amount);
     }   
