@@ -1,0 +1,143 @@
+import './safeMath.sol';
+import './IERC20.sol';
+import './context.sol';
+
+pragma solidity ^0.8.7;
+// SPDX-License-Identifier: MIT
+
+
+contract FiPiStacking is Ownable {
+    using SafeMath for uint256;
+
+    struct UserInfo {
+        uint256 amount;
+        bool withdrawRequested;
+        uint256 releaseDate;
+        uint256 lastClaimBlock;
+    }
+
+    IERC20 fipiToken;
+
+    //it could be different from contract token balance, because rewards has external source added by owner
+    uint256 totalTokenStacked; 
+
+
+
+    address public devAddr;
+    
+    uint256 public rewardPerBlock;
+
+
+    mapping (address => UserInfo) public userInfo;
+    
+    uint256 public startBlock;
+
+    event Deposit(address indexed user, uint256 amount);
+    event Withdraw(address indexed user, uint256 amount);
+    event EmergencyWithdraw(address indexed user, uint256 amount);
+    event Claimed(uint256 amount);
+
+    constructor(
+        IERC20 _fipiToken,
+        uint256 _rewardPerBlock,
+        uint256 _startBlock,
+        uint256 _bonusEndBlock
+    ) public {
+        fipiToken = _fipiToken;
+        devAddr = _msgSender();
+        rewardPerBlock = _rewardPerBlock;
+        startBlock = _startBlock;
+    }
+
+    
+    function deposit(uint256 _amount) public {
+        
+        UserInfo storage user = userInfo[msg.sender];
+        totalTokenStacked = totalTokenStacked.add(_amount);
+        
+        if (user.amount == 0)
+        {
+            user.lastClaimBlock = block.number;
+            user.amount = _amount;
+        }
+        else
+        {
+            claim(msg.sender);
+            user.amount = user.amount.add( _amount);
+        }
+        
+        fipiToken.safeTransferFrom(address(msg.sender), address(this), _amount);
+        emit Deposit(msg.sender, _amount);
+    }
+
+
+    
+
+    function claim(address _receiver) public  {
+
+        UserInfo storage user = userInfo[_msgSender()];
+
+        uint256 stakedAmount = user.amount;
+        uint256 howManyBlocksArePending = block.number.sub(user.lastClaimBlock);
+        uint256 rewardPerUserShare = rewardPerBlock.mul(user.amount).div(totalTokenStacked);
+        uint256 claimableAmount = howManyBlocksArePending.mul(rewardPerUserShare); 
+        user.lastClaimBlock = block.number;
+        user.amount = user.amount.add(claimableAmount);
+        
+        emit Claimed(claimableAmount);
+
+    }
+
+
+    function pendingRewards(address _user) external view returns (uint256) 
+    {
+        UserInfo storage user = userInfo[_user];
+        
+        uint256 stakedAmount = user.amount;
+        uint256 howManyBlocksArePending = block.number.sub(user.lastClaimBlock);
+        uint256 rewardPerUserShare = rewardPerBlock.mul(user.amount).div(totalTokenStacked);
+
+        return rewardPerUserShare;
+    }
+
+    
+    
+
+
+    
+    // Withdraw LP tokens from DefilyFarm.
+    function withdraw(uint256 _pid, uint256 _amount) public {
+        
+        UserInfo storage user = userInfo[msg.sender];
+        require(user.amount >= _amount, "withdraw: not good");
+        updatePool(_pid);
+        uint256 pending = user.amount.mul(pool.accRewardPerShare).div(1e12).sub(user.rewardDebt);
+        safeTokenTransfer(msg.sender, pending);
+        user.amount = user.amount.sub(_amount);
+        user.rewardDebt = user.amount.mul(pool.accRewardPerShare).div(1e12);
+        pool.lpToken.safeTransfer(address(msg.sender), _amount);
+        emit Withdraw(msg.sender, _pid, _amount);
+    }
+
+    
+
+    // Safe token transfer function, just in case if rounding error causes pool to not have enough tokens.
+    function safeTokenTransfer(address _to, uint256 _amount) internal {
+        uint256 rewardBal = zabuToken.balanceOf(address(this));
+        if (_amount > rewardBal) {
+            zabuToken.transfer(_to, rewardBal);
+        } else {
+            zabuToken.transfer(_to, _amount);
+        }
+    }
+
+
+   
+
+    function updateRewardPerBlock(uint256 _rewardPerBlock, bool _withUpdate) public onlyOwner {
+        rewardPerBlock = _rewardPerBlock;
+        if (_withUpdate) {
+            massUpdatePools();
+        }
+    }
+}
