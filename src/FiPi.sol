@@ -31,8 +31,9 @@ contract Fipi is Context, IERC20, Ownable {
     uint256 private _rTotal = (MAX - (MAX % _tTotal));
     uint256 private _tFeeTotal;
 
-    string private constant _name = "$FiPi";
-    string private constant _symbol = "FiPi";
+    //!!!!! 
+    string private constant _name = "20220421_Final";
+    string private constant _symbol = "Final";
     uint8 private constant _decimals = 9;
 
     uint256 private _tBurnTotal;
@@ -107,7 +108,7 @@ contract Fipi is Context, IERC20, Ownable {
 
     
     function setWhaleSellThreshold(uint256 amount) external onlyOwner() {
-        require(amount >= 100000);// Whale threshold can only be higher than 10000 (initial value is 100000), we dont want to have a possibility to set tax 16% to everyone
+        require(amount >= 100000);// Whale threshold can only be higher than 100000 (initial value is 100000), we dont want to have a possibility to set tax 16% to everyone
         _whaleSellThreshold = amount;
     }
 
@@ -135,7 +136,7 @@ contract Fipi is Context, IERC20, Ownable {
         // mainnet: 0x10ED43C718714eb63d5aA57B78B54704E256024E
         // testnet: 0xD99D1c33F9fC3444f8101754aBC46c52416550D1
         // pancaketestnet: 0x9Ac64Cc6e4415144C455BD8E4837Fea55603e5c3
-        IPancakeRouter02 _pancakeRouter = IPancakeRouter02(0x10ED43C718714eb63d5aA57B78B54704E256024E);
+        IPancakeRouter02 _pancakeRouter = IPancakeRouter02(0x9Ac64Cc6e4415144C455BD8E4837Fea55603e5c3);
         pancakePair = IPancakeFactory(_pancakeRouter.factory()).createPair(address(this), _pancakeRouter.WETH());
         pancakeRouter = _pancakeRouter;
 

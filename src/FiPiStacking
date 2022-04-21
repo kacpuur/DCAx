@@ -39,20 +39,20 @@ contract FiPiStacking is Ownable {
 
     constructor(
         IERC20 _fipiToken,
-        uint256 _rewardPerBlock,
-        uint256 _startBlock,
-        uint256 _bonusEndBlock
-    ) public {
+        uint256 _rewardPerBlock
+    ) {
         fipiToken = _fipiToken;
         devAddr = _msgSender();
         rewardPerBlock = _rewardPerBlock;
-        startBlock = _startBlock;
     }
 
     
     function deposit(uint256 _amount) public {
         
         UserInfo storage user = userInfo[msg.sender];
+
+        require(user.withdrawRequested == false, "You can not deposit tokens while withdrawing");
+
         totalTokenStacked = totalTokenStacked.add(_amount);
         
         if (user.amount == 0)
@@ -62,28 +62,42 @@ contract FiPiStacking is Ownable {
         }
         else
         {
-            claim(msg.sender);
+            claimAndRestake();
             user.amount = user.amount.add( _amount);
         }
         
-        fipiToken.safeTransferFrom(address(msg.sender), address(this), _amount);
+        fipiToken.transferFrom(msg.sender, address(this), _amount);
         emit Deposit(msg.sender, _amount);
     }
 
 
     
 
-    function claim(address _receiver) public  {
+    function claimAndRestake() public  {
 
         UserInfo storage user = userInfo[_msgSender()];
+        require(user.withdrawRequested == false, "You can not claim any rewards when you already initialize a withdraw");
 
-        uint256 stakedAmount = user.amount;
-        uint256 howManyBlocksArePending = block.number.sub(user.lastClaimBlock);
-        uint256 rewardPerUserShare = rewardPerBlock.mul(user.amount).div(totalTokenStacked);
-        uint256 claimableAmount = howManyBlocksArePending.mul(rewardPerUserShare); 
+        uint256 claimableAmount = calculateClaimableTokens(user.amount, user.lastClaimBlock);
+
         user.lastClaimBlock = block.number;
         user.amount = user.amount.add(claimableAmount);
+        totalTokenStacked = totalTokenStacked.add(claimableAmount);
         
+        emit Claimed(claimableAmount);
+
+    }
+
+    function claimAndWithdraw() public  {
+
+        UserInfo storage user = userInfo[_msgSender()];
+        require(user.withdrawRequested == false, "You can not claim any rewards when you already initialize a withdraw");
+        
+        uint256 claimableAmount = calculateClaimableTokens(user.amount, user.lastClaimBlock);
+
+        user.lastClaimBlock = block.number;
+        fipiToken.transfer(msg.sender, claimableAmount);
+
         emit Claimed(claimableAmount);
 
     }
@@ -93,51 +107,52 @@ contract FiPiStacking is Ownable {
     {
         UserInfo storage user = userInfo[_user];
         
-        uint256 stakedAmount = user.amount;
-        uint256 howManyBlocksArePending = block.number.sub(user.lastClaimBlock);
-        uint256 rewardPerUserShare = rewardPerBlock.mul(user.amount).div(totalTokenStacked);
-
-        return rewardPerUserShare;
+        if(user.withdrawRequested)
+        {
+            return 0;
+        }
+        
+        uint256 claimableAmount = calculateClaimableTokens(user.amount, user.lastClaimBlock);
+        return claimableAmount;
     }
 
-    
-    
 
+    function initWithdraw() public{
+        UserInfo storage user = userInfo[msg.sender];
+        claimAndRestake();
 
-    
-    // Withdraw LP tokens from DefilyFarm.
-    function withdraw(uint256 _pid, uint256 _amount) public {
+        require(user.amount >= 0, "You have no tokens to withdraw");
+        require(user.withdrawRequested == false, "You already initialize withdraw");
+        user.releaseDate = block.timestamp + 1209600;
+        user.withdrawRequested = true;
+
+    }
+
+    function withdraw() public {
         
         UserInfo storage user = userInfo[msg.sender];
-        require(user.amount >= _amount, "withdraw: not good");
-        updatePool(_pid);
-        uint256 pending = user.amount.mul(pool.accRewardPerShare).div(1e12).sub(user.rewardDebt);
-        safeTokenTransfer(msg.sender, pending);
-        user.amount = user.amount.sub(_amount);
-        user.rewardDebt = user.amount.mul(pool.accRewardPerShare).div(1e12);
-        pool.lpToken.safeTransfer(address(msg.sender), _amount);
-        emit Withdraw(msg.sender, _pid, _amount);
+
+        require(user.amount >0, "You have no tokens to withdraw");
+        require(user.withdrawRequested == true, "You need to initialize your withdraw first" );
+        require(block.timestamp > user.releaseDate, "You can't withdraw yet" );
+        
+        uint256 tokensToWithdraw = user.amount;
+
+
+        totalTokenStacked = totalTokenStacked.sub(tokensToWithdraw);
+        user.withdrawRequested = false;
+        user.releaseDate = 0;
+        fipiToken.transfer(msg.sender, tokensToWithdraw);
+
+        emit Withdraw(msg.sender, tokensToWithdraw);
     }
 
-    
-
-    // Safe token transfer function, just in case if rounding error causes pool to not have enough tokens.
-    function safeTokenTransfer(address _to, uint256 _amount) internal {
-        uint256 rewardBal = zabuToken.balanceOf(address(this));
-        if (_amount > rewardBal) {
-            zabuToken.transfer(_to, rewardBal);
-        } else {
-            zabuToken.transfer(_to, _amount);
-        }
+    function calculateClaimableTokens(uint256 amount, uint256 lastClaimBlock ) internal view returns (uint256) {
+        
+        uint256 howManyBlocksArePending = block.number.sub(lastClaimBlock);
+        uint256 rewardPerUserShare = rewardPerBlock.mul(amount).div(totalTokenStacked);
+        uint256 claimableAmount = howManyBlocksArePending.mul(rewardPerUserShare);
+        return claimableAmount;
     }
 
-
-   
-
-    function updateRewardPerBlock(uint256 _rewardPerBlock, bool _withUpdate) public onlyOwner {
-        rewardPerBlock = _rewardPerBlock;
-        if (_withUpdate) {
-            massUpdatePools();
-        }
-    }
 }

@@ -82,6 +82,12 @@ contract Privatesale is Ownable {
         participants[user].refparticipant = isReferalActive;
     }
 
+    function migratePreviousRoundParticipantBatch(address[] memory _addresses, uint256 amont) external onlyOwner {
+        for (uint256 i = 0; i < _addresses.length; i++){
+            participants[_addresses[i]].fipiTokenPurcheased = amont;
+        }
+    }
+
     function addParticipantBatch(address[] memory _addresses, uint256 maxPurchaseAmount) external onlyOwner {
         for (uint256 i = 0; i < _addresses.length; i++){
             participants[_addresses[i]].maxPurchaseAmountInBUSD = maxPurchaseAmount;
@@ -195,12 +201,13 @@ contract Privatesale is Ownable {
         tolalBUSDRaised = tolalBUSDRaised.add(_amount);
         participant.alreadyPurcheasedInBUSD = participant.alreadyPurcheasedInBUSD.add(_amount);
 
-
         if(tokenToRefferer > 0){
             tokenPurcheased = tokenPurcheased.add(tokenToRefferer);
             participants[_referrer].fipiTokenPurcheased = participants[_referrer].fipiTokenPurcheased.add(tokenToRefferer);
         }
         participant.fipiTokenPurcheased = participant.fipiTokenPurcheased.add(tokenPurcheased);
+
+        
 
         emit Bought(msg.sender, _amount);
     }   
@@ -240,9 +247,11 @@ contract Privatesale is Ownable {
 
         uint256 tokenToBeSendNow = tokenClaimable.sub(participant.fipiTokenClaimed);
         
-        fiPiToken.transfer(msg.sender, tokenToBeSendNow);
+        
         participant.fipiTokenClaimed = tokenClaimable;
 
+        fiPiToken.transfer(msg.sender, tokenToBeSendNow);
+        
         emit Claimed(msg.sender, tokenToBeSendNow);
 
     }
