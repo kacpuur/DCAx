@@ -65,7 +65,8 @@ contract FiPiStacking is Ownable {
         UserInfo storage user = userInfo[msg.sender];
 
         require(user.withdrawRequested == false, "You can not deposit tokens while withdrawing");
-
+        uint256 allowance = fipiToken.allowance(msg.sender, address(this));
+        require(allowance >= _amount, "Check the token allowance");
         //each time something change in any user/total stacked ratio we need to update fipiTokenCumulatedPerTokenStaked
         
         if (user.amount == 0)
@@ -184,14 +185,13 @@ contract FiPiStacking is Ownable {
 
     function updateRewardPerTokenStaked() private 
     {
-        if(totalTokenStacked > 0)
-        {
+        
             //if something is staked we need to calculate how much rewards it is pending per one token
             uint256 howManyBlocksFromLast = block.number.sub(fipiTokenCumulatedPerTokenStakedUpdateBlock);
             uint256 rewardToBeDistributed = howManyBlocksFromLast.mul(rewardPerBlock).div(totalTokenStacked);
             fipiTokenCumulatedPerTokenStaked = fipiTokenCumulatedPerTokenStaked.add(rewardToBeDistributed);
             fipiTokenCumulatedPerTokenStakedUpdateBlock = block.number;
-        }
+        
     }
 
     
