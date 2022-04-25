@@ -14,12 +14,14 @@ contract FiPiStacking is Ownable {
         bool withdrawRequested;
         uint256 releaseDate;
         uint256 fipiTokenCumulatedReward;
+        uint256 busdCumulatedReward;
     }
 
     IERC20 fipiToken;
+    IERC20 busd;
 
     //it could be different from contract token balance, because rewards has external source added by owner
-    uint256 totalTokenStacked; 
+    uint256 public totalTokenStacked; 
 
 
     address public devAddr;
@@ -36,6 +38,8 @@ contract FiPiStacking is Ownable {
     uint256 public fipiTokenCumulatedPerTokenStaked;
     uint256 public fipiTokenCumulatedPerTokenStakedUpdateBlock;
 
+    uint256 public busdCumulatedPerTokenStaked;
+
     mapping (address => UserInfo) public userInfo;
     
     uint256 public startBlock;
@@ -51,9 +55,10 @@ contract FiPiStacking is Ownable {
     ) {
         fipiToken = _fipiToken;
         devAddr = _msgSender();
-        //reward per block need to be multiplied by bignumber to avoid problem with floating shit so it would be initialy 7500 * 10**9 (decimal) * 10**9
-        rewardPerBlock = _rewardPerBlock.mul(10**18);
+        //reward per block need to be multiplied by bignumber to avoid problem with floating shit so it would be initialy 7500 * 10**18 (decimal) * 10**18
+        rewardPerBlock = _rewardPerBlock;
         fipiTokenCumulatedPerTokenStakedUpdateBlock = block.number;
+        busd = IERC20(0x78867BbEeF44f2326bF8DDd1941a4439382EF2A7);
     }
 
     
@@ -73,16 +78,18 @@ contract FiPiStacking is Ownable {
         {
             updateRewardPerTokenStaked();
             totalTokenStacked = totalTokenStacked.add(_amount);
-            
             user.amount = _amount;
         }
         else
         {
             claimAndRestake();
+            claimBusd();
             user.amount = user.amount.add(_amount);
         }
-        user.fipiTokenCumulatedReward = fipiTokenCumulatedPerTokenStaked.mul(user.amount);
-        
+
+        user.fipiTokenCumulatedReward = fipiTokenCumulatedPerTokenStaked.mul(user.amount).div(10**18);
+        user.busdCumulatedReward = busdCumulatedPerTokenStaked.mul(user.amount).div(10**18);
+
         fipiToken.transferFrom(msg.sender, address(this), _amount);
         emit Deposit(msg.sender, _amount);
     }
@@ -98,16 +105,15 @@ contract FiPiStacking is Ownable {
 
         require(user.withdrawRequested == false, "You can not claim any rewards when you already initialize a withdraw");
 
-        uint256 claimableAmount = user.amount.mul(fipiTokenCumulatedPerTokenStaked).sub(user.fipiTokenCumulatedReward);
-        //rewards are * 10**9
-        uint256 claimableAmountUnitAdjusted = claimableAmount.div(10**9);
+        uint256 maxClaim = user.amount.mul(fipiTokenCumulatedPerTokenStaked).div(10**18);
+        uint256 claimableAmount = maxClaim.sub(user.fipiTokenCumulatedReward);
 
         
-        user.amount = user.amount.add(claimableAmountUnitAdjusted);
+        user.amount = user.amount.add(claimableAmount);
         //everything is claimed so i assign to fipiTokenCumulatedReward everything that is there to be claimed
-        user.fipiTokenCumulatedReward = fipiTokenCumulatedPerTokenStaked.mul(user.amount);
+        user.fipiTokenCumulatedReward = user.amount.mul(fipiTokenCumulatedPerTokenStaked).div(10**18);
         
-        totalTokenStacked = totalTokenStacked.add(claimableAmountUnitAdjusted);
+        totalTokenStacked = totalTokenStacked.add(claimableAmount);
         
         emit Claimed(claimableAmount);
 
@@ -120,17 +126,37 @@ contract FiPiStacking is Ownable {
         UserInfo storage user = userInfo[_msgSender()];
         require(user.withdrawRequested == false, "You can not claim any rewards when you already initialize a withdraw");
         
-        uint256 claimableAmount = user.amount.mul(fipiTokenCumulatedPerTokenStaked).sub(user.fipiTokenCumulatedReward);
-        uint256 claimableAmountUnitAdjusted = claimableAmount.div(10**9);
+        uint256 maxClaim = user.amount.mul(fipiTokenCumulatedPerTokenStaked).div(10**18);
+        uint256 claimableAmount = maxClaim.sub(user.fipiTokenCumulatedReward);
 
         //everything is claimed so i assign to fipiTokenCumulatedReward everything that is there to be claimed
-        user.fipiTokenCumulatedReward = fipiTokenCumulatedPerTokenStaked.mul(user.amount);
-        fipiToken.transfer(msg.sender, claimableAmountUnitAdjusted);
+        user.fipiTokenCumulatedReward = maxClaim;
+        fipiToken.transfer(msg.sender, claimableAmount);
 
         emit Claimed(claimableAmount);
 
     }
 
+
+    function claimBusd() public  
+    {
+        if(busdCumulatedPerTokenStaked == 0){
+            return;
+        }
+
+        UserInfo storage user = userInfo[_msgSender()];
+        require(user.withdrawRequested == false, "You can not claim any rewards when you already initialize a withdraw");
+        
+        uint256 maxClaim = user.amount.mul(busdCumulatedPerTokenStaked).div(10**18);
+        uint256 claimableAmount = maxClaim.sub(user.busdCumulatedReward);
+
+        //everything is claimed so i assign to fipiTokenCumulatedReward everything that is there to be claimed
+        user.busdCumulatedReward = maxClaim;
+        busd.transfer(msg.sender, claimableAmount);
+
+        emit Claimed(claimableAmount);
+
+    }
 
     function pendingRewards(address _user) external view returns (uint256) 
     {
@@ -145,16 +171,17 @@ contract FiPiStacking is Ownable {
         if (block.number > fipiTokenCumulatedPerTokenStakedUpdateBlock && totalStacked != 0) {
             uint256 nrOfBlocks = block.number.sub(fipiTokenCumulatedPerTokenStakedUpdateBlock);
             uint256 reward = nrOfBlocks.mul(rewardPerBlock);
-            tokenPerStake = tokenPerStake.add(reward.div(totalStacked));
+            tokenPerStake = tokenPerStake.add(reward.mul(10**18).div(totalStacked));
         }
-        uint256 claimable = user.amount.mul(tokenPerStake).sub(user.fipiTokenCumulatedReward);
-        return claimable.div(10**9);
+        uint256 claimable = user.amount.mul(tokenPerStake).div(10**18).sub(user.fipiTokenCumulatedReward);
+        return claimable;
     }
 
 
     function initWithdraw() public{
        
         claimAndRestake();
+        claimBusd();
         UserInfo storage user = userInfo[msg.sender];
 
         uint256 tokensToWithdraw = user.amount;
@@ -183,15 +210,24 @@ contract FiPiStacking is Ownable {
         emit Withdraw(msg.sender, user.amount);
     }
 
+    function distribute(uint _reward) external onlyOwner
+    {
+        uint256 allowance = busd.allowance(msg.sender, address(this));
+        require(allowance >= _reward, "Check the token allowance");
+        uint reward = _reward.mul(10**18).div(totalTokenStacked);
+        busdCumulatedPerTokenStaked = busdCumulatedPerTokenStaked.add(reward);
+    }
+
     function updateRewardPerTokenStaked() private 
     {
-        
+        if(totalTokenStacked > 0)
+        {
             //if something is staked we need to calculate how much rewards it is pending per one token
             uint256 howManyBlocksFromLast = block.number.sub(fipiTokenCumulatedPerTokenStakedUpdateBlock);
-            uint256 rewardToBeDistributed = howManyBlocksFromLast.mul(rewardPerBlock).div(totalTokenStacked);
+            uint256 rewardToBeDistributed = howManyBlocksFromLast.mul(rewardPerBlock).mul(10**18).div(totalTokenStacked);
             fipiTokenCumulatedPerTokenStaked = fipiTokenCumulatedPerTokenStaked.add(rewardToBeDistributed);
             fipiTokenCumulatedPerTokenStakedUpdateBlock = block.number;
-        
+        }
     }
 
     
