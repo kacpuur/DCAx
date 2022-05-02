@@ -32,7 +32,7 @@ contract Fipi is Context, IERC20, Ownable {
     uint256 private _tFeeTotal;
 
     //!!!!! 
-    string private constant _name = "20220421_Final";
+    string private constant _name = "20220427_Final";
     string private constant _symbol = "Final";
     uint8 private constant _decimals = 9;
 

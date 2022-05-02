@@ -115,6 +115,11 @@ contract Privatesale is Ownable {
     }
 
     function isWhitelisted(address account) external view returns (bool){
+
+        if(isWhiteListActive == true){
+            return true;
+        }
+
         Participant storage participant = participants[account];
         return participant.maxPurchaseAmountInBUSD > 0;
     }
