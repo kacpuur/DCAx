@@ -162,6 +162,10 @@ contract FiPiStacking is Ownable {
     {
         UserInfo storage user = userInfo[_user];
         
+        if(user.amount == 0){
+            return 0;
+        }
+
         if(user.withdrawRequested == true){
             return 0;
         }

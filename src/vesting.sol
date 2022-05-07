@@ -24,14 +24,11 @@ contract PrivateSaleVesting is Ownable {
     event Claimed(address indexed account, uint256 indexed amount);
 
     uint256 public tokenBNBRatio; //how much tokens for one bnb
+    uint256 public tgeDeciles; //how much tokens for one bnb
 
-
-    //uint256[] internal releaseDates = [1646136000,1648814400,1651406400,1654084800,1656676800];
     uint256[10] public releaseDates;
     uint256 public tgeDate;
     
-    address payable public _BurnWallet = payable(0x000000000000000000000000000000000000dEaD);
-
     IERC20 public fiPiToken;
 
     
@@ -90,9 +87,10 @@ contract PrivateSaleVesting is Ownable {
         return 0;
     }
 
-    constructor() 
+    constructor(uint256 _tokenBNBRatio, uint256 _tgeDeciles) 
     {
-        tokenBNBRatio = 12500;
+        tokenBNBRatio = _tokenBNBRatio;
+        tgeDeciles = _tgeDeciles;
     } 
 
 
@@ -110,7 +108,7 @@ contract PrivateSaleVesting is Ownable {
         require(block.timestamp > tgeDate, "Token is not yet listed");
 
         //we start from 30% at tge
-        uint256 tokenClaimable = participant.fipiTokenPurcheased.mul(4).div(10);
+        uint256 tokenClaimable = participant.fipiTokenPurcheased.mul(tgeDeciles).div(10);
 
         //70% is vested
         uint256 restTokensVested = participant.fipiTokenPurcheased.sub(tokenClaimable);
@@ -180,8 +178,8 @@ contract PrivateSaleVesting is Ownable {
     }
 
 
-    function burnLeftTokens() external onlyOwner {
-        fiPiToken.transfer(_BurnWallet, fiPiToken.balanceOf(address(this)));
+    function withDrawLeftTokens() external onlyOwner {
+        fiPiToken.transfer(msg.sender, fiPiToken.balanceOf(address(this)));
     }
     
 }
