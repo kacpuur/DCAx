@@ -48,7 +48,7 @@ contract PrivateSaleVesting is Ownable {
         }
     }
 
-    mapping(address => Participant) private participants;
+    mapping(address => Participant) public participants;
 
 
     function setTokenAdress(IERC20 _fipiToken) external onlyOwner {
@@ -161,22 +161,6 @@ contract PrivateSaleVesting is Ownable {
         uint256 tokenToBeSendNow = tokenClaimable.sub(participant.fipiTokenClaimed);
         return tokenToBeSendNow;
     }
-
-    function bnbInPrivateSaleSpend(address account) external view returns (uint256){
-        Participant storage participant = participants[account];
-        return participant.alreadyPurcheasedInBNB;
-    }
-
-    function yourFiPiTokens(address account) external view returns (uint256){
-        Participant storage participant = participants[account];
-        return participant.fipiTokenPurcheased;
-    }
-
-    function claimedFiPiTokens(address account) external view returns (uint256){
-        Participant storage participant = participants[account];
-        return participant.fipiTokenClaimed;
-    }
-
 
     function withDrawLeftTokens() external onlyOwner {
         fiPiToken.transfer(msg.sender, fiPiToken.balanceOf(address(this)));
