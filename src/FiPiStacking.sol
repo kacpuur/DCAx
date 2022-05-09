@@ -6,7 +6,7 @@ pragma solidity ^0.8.7;
 // SPDX-License-Identifier: MIT
 
 
-contract FiPiStacking is Ownable {
+contract FiPiStaking is Ownable {
     using SafeMath for uint256;
 
     struct UserInfo {
@@ -39,10 +39,19 @@ contract FiPiStacking is Ownable {
     uint256 public fipiTokenCumulatedPerTokenStakedUpdateBlock;
 
     uint256 public busdCumulatedPerTokenStaked;
+    uint256 public withdrawdelay;
+
 
     mapping (address => UserInfo) public userInfo;
     
     uint256 public startBlock;
+    uint256 public stakingFinishBlock;
+    bool public stakingEnabled;
+
+    function setStakingEnabled() external onlyOwner {
+        stakingFinishBlock = block.number;
+        stakingEnabled = false;
+    }
 
     event Deposit(address indexed user, uint256 amount);
     event Withdraw(address indexed user, uint256 amount);
@@ -51,10 +60,13 @@ contract FiPiStacking is Ownable {
 
     constructor(
         IERC20 _fipiToken,
-        uint256 _rewardPerBlock
+        uint256 _rewardPerBlock,
+        uint256 _withdrawdelay
     ) {
         fipiToken = _fipiToken;
         devAddr = _msgSender();
+        withdrawdelay = _withdrawdelay;
+        stakingEnabled = true;
         //reward per block need to be multiplied by bignumber to avoid problem with floating shit so it would be initialy 7500 * 10**18 (decimal) * 10**18
         rewardPerBlock = _rewardPerBlock;
         fipiTokenCumulatedPerTokenStakedUpdateBlock = block.number;
@@ -68,6 +80,8 @@ contract FiPiStacking is Ownable {
     function deposit(uint256 _amount) public {
         
         UserInfo storage user = userInfo[msg.sender];
+
+        require(stakingEnabled == true, "Staking is disabled");
 
         require(user.withdrawRequested == false, "You can not deposit tokens while withdrawing");
         uint256 allowance = fipiToken.allowance(msg.sender, address(this));
@@ -118,6 +132,7 @@ contract FiPiStacking is Ownable {
         emit Claimed(claimableAmount);
 
     }
+    
 
     function claimAndWithdraw() public  
     {
@@ -162,21 +177,24 @@ contract FiPiStacking is Ownable {
     {
         UserInfo storage user = userInfo[_user];
         
-        if(user.amount == 0){
+        if(user.amount == 0 || user.withdrawRequested == true){
             return 0;
         }
 
-        if(user.withdrawRequested == true){
-            return 0;
-        }
         uint256 tokenPerStake = fipiTokenCumulatedPerTokenStaked;
         uint256 totalStacked = totalTokenStacked;
 
-        if (block.number > fipiTokenCumulatedPerTokenStakedUpdateBlock && totalStacked != 0) {
-            uint256 nrOfBlocks = block.number.sub(fipiTokenCumulatedPerTokenStakedUpdateBlock);
+        uint256 maxBlock = block.number;
+        if(block.number > stakingFinishBlock && stakingEnabled == false){
+            maxBlock = stakingFinishBlock;
+        }
+
+        if (maxBlock > fipiTokenCumulatedPerTokenStakedUpdateBlock && totalStacked != 0) {
+            uint256 nrOfBlocks = maxBlock.sub(fipiTokenCumulatedPerTokenStakedUpdateBlock);
             uint256 reward = nrOfBlocks.mul(rewardPerBlock);
             tokenPerStake = tokenPerStake.add(reward.mul(10**18).div(totalStacked));
         }
+
         uint256 claimable = user.amount.mul(tokenPerStake).div(10**18).sub(user.fipiTokenCumulatedReward);
         return claimable;
     }
@@ -193,7 +211,7 @@ contract FiPiStacking is Ownable {
 
         require(user.amount >= 0, "You have no tokens to withdraw");
         require(user.withdrawRequested == false, "You already initialize withdraw");
-        user.releaseDate = block.timestamp + 1209600;
+        user.releaseDate = block.timestamp + withdrawdelay;
         user.withdrawRequested = true;
 
     }
@@ -206,12 +224,32 @@ contract FiPiStacking is Ownable {
         require(user.withdrawRequested == true, "You need to initialize your withdraw first" );
         require(block.timestamp > user.releaseDate, "You can't withdraw yet" );
         
-        
+        uint256 tokensToWithdraw = user.amount;
+
         user.withdrawRequested = false;
         user.releaseDate = 0;
-        fipiToken.transfer(msg.sender, user.amount);
+        user.amount = 0;
+        fipiToken.transfer(msg.sender, tokensToWithdraw);
 
-        emit Withdraw(msg.sender, user.amount);
+        emit Withdraw(msg.sender, tokensToWithdraw);
+    }
+
+
+    function emergencyWithdraw() public {
+        
+        UserInfo storage user = userInfo[msg.sender];
+
+        require(stakingEnabled == false, "This function is used only when staking is disbaled");
+        require(user.amount >0, "You have no tokens to withdraw");
+        
+        uint256 tokensToWithdraw = user.amount;
+
+        user.withdrawRequested = false;
+        user.releaseDate = 0;
+        user.amount = 0;
+        fipiToken.transfer(msg.sender, tokensToWithdraw);
+
+        emit Withdraw(msg.sender, tokensToWithdraw);
     }
 
     function distribute(uint _reward) external onlyOwner
@@ -226,11 +264,16 @@ contract FiPiStacking is Ownable {
     {
         if(totalTokenStacked > 0)
         {
+            uint256 maxBlock = block.number;
+            if(block.number > stakingFinishBlock && stakingEnabled == false){
+                maxBlock = stakingFinishBlock;
+            }
+
             //if something is staked we need to calculate how much rewards it is pending per one token
-            uint256 howManyBlocksFromLast = block.number.sub(fipiTokenCumulatedPerTokenStakedUpdateBlock);
+            uint256 howManyBlocksFromLast = maxBlock.sub(fipiTokenCumulatedPerTokenStakedUpdateBlock);
             uint256 rewardToBeDistributed = howManyBlocksFromLast.mul(rewardPerBlock).mul(10**18).div(totalTokenStacked);
             fipiTokenCumulatedPerTokenStaked = fipiTokenCumulatedPerTokenStaked.add(rewardToBeDistributed);
-            fipiTokenCumulatedPerTokenStakedUpdateBlock = block.number;
+            fipiTokenCumulatedPerTokenStakedUpdateBlock = maxBlock;
         }
     }
 
