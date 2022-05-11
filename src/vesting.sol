@@ -145,7 +145,7 @@ contract PrivateSaleVesting is Ownable {
 
         uint256 unlockedReleasesCount = 0;
 
-        uint256 tokenClaimable = participant.fipiTokenPurcheased.mul(4).div(10);
+        uint256 tokenClaimable = participant.fipiTokenPurcheased.mul(tgeDeciles).div(10);
         uint256 restTokensVested = participant.fipiTokenPurcheased.sub(tokenClaimable);
         for (uint256 i = 0; i < releaseDates.length; i++) 
         {
