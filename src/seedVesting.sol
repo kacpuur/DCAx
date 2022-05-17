@@ -22,7 +22,6 @@ contract SeedVesting is Ownable {
     event Bought(address indexed account, uint256 indexed amount);
     event Claimed(address indexed account, uint256 indexed amount);
 
-    uint256 public tokenBNBRatio; //how much tokens for one bnb
     uint256 public tgeDeciles; //how much tokens for one bnb
 
     uint256[12] public releaseDates;
@@ -37,16 +36,16 @@ contract SeedVesting is Ownable {
         delete releaseDates;
         tgeDate = listingDateTimestamp;
 
-        //cliff for 3 months
+        //7776000
         listingDateTimestamp = listingDateTimestamp.add(7776000);
-        //WE RELEASE TOKENS FOR 12 MONTHS
+        //WE RELEASE TOKENS FOR 10 MONTHS
         for(uint256 i = 0; i < 12; i++)
         {
             //30 days 2592000
             //6h for tests 21600
             //1h for tests 3600
             releaseDates[i] = listingDateTimestamp;
-            listingDateTimestamp = listingDateTimestamp.add(3600);
+            listingDateTimestamp = listingDateTimestamp.add(2592000);
             
         }
     }
@@ -87,9 +86,8 @@ contract SeedVesting is Ownable {
         return 0;
     }
 
-    constructor(uint256 _tokenBNBRatio, uint256 _tgeDeciles) 
+    constructor(uint256 _tgeDeciles) 
     {
-        tokenBNBRatio = _tokenBNBRatio;
         tgeDeciles = _tgeDeciles;
     } 
 
@@ -123,7 +121,7 @@ contract SeedVesting is Ownable {
         }
 
         //we add everything released to initial 30%
-        tokenClaimable = tokenClaimable.add(restTokensVested.mul(unlockedReleasesCount).div(10));
+        tokenClaimable = tokenClaimable.add(restTokensVested.mul(unlockedReleasesCount).div(12));
 
         require(tokenClaimable > participant.fipiTokenClaimed, "You have nothing left to claim wait for next release.");
 
@@ -156,7 +154,7 @@ contract SeedVesting is Ownable {
         }
 
         //we add everything released to initial 30%
-        tokenClaimable = tokenClaimable.add(restTokensVested.mul(unlockedReleasesCount).div(10));
+        tokenClaimable = tokenClaimable.add(restTokensVested.mul(unlockedReleasesCount).div(12));
 
         uint256 tokenToBeSendNow = tokenClaimable.sub(participant.fipiTokenClaimed);
         return tokenToBeSendNow;

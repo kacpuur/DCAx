@@ -6,12 +6,11 @@ import "./context.sol";
 import './safeMath.sol';
 import './IERC20.sol';
 
-contract PrivateSaleVesting is Ownable {
+contract SaleVesting is Ownable {
     using SafeMath for uint256;
 
     struct Participant {
         // How much he already bought
-        uint256 alreadyPurcheasedInBNB;
 
         uint256 fipiTokenPurcheased;
 
@@ -43,7 +42,7 @@ contract PrivateSaleVesting is Ownable {
             //30 days 2592000
             //6h for tests 21600
             //1h for tests 3600
-            listingDateTimestamp = listingDateTimestamp.add(3600);
+            listingDateTimestamp = listingDateTimestamp.add(2592000);
             releaseDates[i] = listingDateTimestamp;
         }
     }
@@ -55,25 +54,22 @@ contract PrivateSaleVesting is Ownable {
         fiPiToken = _fipiToken;
     }
 
-    function addParticipant(address user, uint256 _alreadyPurcheasedInBNB) external onlyOwner {
+    function addParticipant(address user, uint256 _alloc) external onlyOwner {
         require(user != address(0));
-        participants[user].alreadyPurcheasedInBNB = _alreadyPurcheasedInBNB;
-        participants[user].fipiTokenPurcheased = _alreadyPurcheasedInBNB.div(10 ** 9).mul(tokenBNBRatio);
+        participants[user].fipiTokenPurcheased = _alloc;
     }
 
 
-    function addParticipantBatch(address[] memory _addresses, uint256 _alreadyPurcheasedInBNB) external onlyOwner {
+    function addParticipantBatch(address[] memory _addresses, uint256[] memory _alloc) external onlyOwner {
         for (uint256 i = 0; i < _addresses.length; i++) 
         {
-            participants[_addresses[i]].alreadyPurcheasedInBNB = _alreadyPurcheasedInBNB;
-            participants[_addresses[i]].fipiTokenPurcheased = _alreadyPurcheasedInBNB.div(10 ** 9).mul(tokenBNBRatio);
+            participants[_addresses[i]].fipiTokenPurcheased = _alloc[i];
         }
     }
 
     function revokeParticipant(address user) external onlyOwner {
         require(user != address(0));
         participants[user].fipiTokenPurcheased = 0;
-        participants[user].alreadyPurcheasedInBNB = 0;
     }
 
     function nextReleaseIn() external view returns (uint256){
