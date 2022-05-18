@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-pragma solidity ^0.6.12;
+pragma solidity ^0.8.7;
 
 import "./context.sol";
 import './safeMath.sol';
@@ -31,19 +31,22 @@ contract Privatesale is Ownable {
 
     uint256 public tolalTokenSold; 
     uint256 public tolalBNBRaised; 
-    uint256 public privateSaleStartDate; 
+    uint256 public wlPrealeStartDate;
+    uint256 public publicPrealeStartDate; 
     uint256 public hardCap; 
     
     //in case something did not work as failsafe
-    bool public isWhiteListed = true;
+    bool public isWhiteListActive = true;
 
     function disableWhitelist() external onlyOwner {
-        isWhiteListed = false;
+        isWhiteListActive = false;
     }
 
 
     //uint256[] internal releaseDates = [1646136000,1648814400,1651406400,1654084800,1656676800];
     uint256[10] public releaseDates;
+    uint256 public tgeDate;
+    
     address payable public _BurnWallet = payable(0x000000000000000000000000000000000000dEaD);
 
     IERC20 public fiPiToken;
@@ -53,11 +56,9 @@ contract Privatesale is Ownable {
         
         //FLUSH EVERYTHING
         delete releaseDates;
-
-        //ON START WE GIVE 20%
-        releaseDates[0] = listingDateTimestamp;
-        releaseDates[1] = listingDateTimestamp;
-        for(uint256 i = 2; i < 10; i++)
+        tgeDate = listingDateTimestamp;
+        //WE RELEASE TOKENS FOR 10 MONTHS
+        for(uint256 i = 0; i < 10; i++)
         {
             //30 days 2592000
             //6h for tests 21600
@@ -102,13 +103,14 @@ contract Privatesale is Ownable {
         return 0;
     }
 
-    constructor(uint256 _hardcap, uint256 _privateSaleStartDate) public {
+    constructor(uint256 _hardcap, uint256 _preSaleStartDate) {
 
         _BNBReciever = payable(_msgSender());
-        tokenBNBRatio = 10500;
+        tokenBNBRatio = 6666;
         hardCap = _hardcap; //hardcap 200 BNB IN WEI
         //Wed, 5 Jan 2022 15:00:00 GMT - 1641394800
-        privateSaleStartDate = _privateSaleStartDate;
+        wlPrealeStartDate = _preSaleStartDate;
+        publicPrealeStartDate = _preSaleStartDate.add(120);
     } 
 
 
@@ -122,8 +124,16 @@ contract Privatesale is Ownable {
 
         uint256 unlockedReleasesCount = 0;
 
-        require(releaseDates[0] > 0, "Listing date is not yet provided!");
+        require(tgeDate > 0, "Listing date is not yet provided!");
+        require(block.timestamp > tgeDate, "Token is not yet listed");
 
+        //we start from 30% at tge
+        uint256 tokenClaimable = participant.fipiTokenPurcheased.mul(4).div(10);
+
+        //70% is vested
+        uint256 restTokensVested = participant.fipiTokenPurcheased.sub(tokenClaimable);
+
+        //now we check how many relesaes is done
         for (uint256 i = 0; i < releaseDates.length; i++) 
         {
             if (releaseDates[i] <= block.timestamp) 
@@ -132,12 +142,16 @@ contract Privatesale is Ownable {
             }
         }
 
-        require(unlockedReleasesCount > participant.releasesClaimed, "You have nothing left to claim wait for next release.");
-        uint256 allTokenstReleasedToParticipant = participant.fipiTokenPurcheased.mul(unlockedReleasesCount).div(10);
-        uint256 tokenToBeSendNow = allTokenstReleasedToParticipant.sub(participant.fipiTokenClaimed);
+
+        //we add everything released to initial 30%
+        tokenClaimable = tokenClaimable.add(restTokensVested.mul(unlockedReleasesCount).div(10));
+
+        require(tokenClaimable > participant.fipiTokenClaimed, "You have nothing left to claim wait for next release.");
+
+        uint256 tokenToBeSendNow = tokenClaimable.sub(participant.fipiTokenClaimed);
+        
         fiPiToken.transfer(msg.sender, tokenToBeSendNow);
-        participant.fipiTokenClaimed = allTokenstReleasedToParticipant;
-        participant.releasesClaimed = unlockedReleasesCount;
+        participant.fipiTokenClaimed = tokenClaimable;
 
         emit Claimed(msg.sender, tokenToBeSendNow);
 
@@ -147,18 +161,18 @@ contract Privatesale is Ownable {
     {
         uint256 amountTobuy = msg.value;
         require(amountTobuy >= 100000000000000000, "0.1 BNB is minimum contribution");
-        require(block.timestamp > privateSaleStartDate, "Private sale has not started yet!");
+        require(block.timestamp > wlPrealeStartDate, "Whitelist presale has not started yet!");
         require(tolalBNBRaised.add(amountTobuy) <= hardCap, "Hardcap exceeded");
 
 
         require(msg.sender != address(0));
         Participant storage participant = participants[msg.sender];
         
-        if(isWhiteListed == false && participant.maxPurchaseAmountInBNB == 0){
-            participant.maxPurchaseAmountInBNB = 2000000000000000000;
+        if((isWhiteListActive == false || block.timestamp > publicPrealeStartDate) && participant.maxPurchaseAmountInBNB == 0){
+            participant.maxPurchaseAmountInBNB = 10000000000000000000;
         }
 
-        require(participant.maxPurchaseAmountInBNB > 0, "You are not on whitelist");
+        require(participant.maxPurchaseAmountInBNB > 0, "You are not on whitelist, wait for public presale");
         require(participant.alreadyPurcheasedInBNB.add(amountTobuy) <= participant.maxPurchaseAmountInBNB, "You already bought your limit");
         
         uint256 numTokens = amountTobuy.div(10 ** 9).mul(tokenBNBRatio);
@@ -171,7 +185,14 @@ contract Privatesale is Ownable {
         emit Bought(msg.sender, msg.value);
     }   
 
+
+
     function isWhitelisted(address account) external view returns (bool){
+
+        if(isWhiteListActive == false){
+            return true;
+        }
+
         Participant storage participant = participants[account];
         return participant.maxPurchaseAmountInBNB > 0;
     }

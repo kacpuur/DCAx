@@ -4,10 +4,8 @@ import './address.sol';
 import './pancake.sol';
 import './context.sol';
 
-pragma solidity ^0.6.12;
+pragma solidity ^0.8.7;
 // SPDX-License-Identifier: MIT
-
-
 
 contract Fipi is Context, IERC20, Ownable {
     using SafeMath
@@ -33,8 +31,9 @@ contract Fipi is Context, IERC20, Ownable {
     uint256 private _rTotal = (MAX - (MAX % _tTotal));
     uint256 private _tFeeTotal;
 
-    string private constant _name = "Test_1";
-    string private constant _symbol = "Test1";
+    //!!!!! 
+    string private constant _name = "20220427_Final";
+    string private constant _symbol = "Final";
     uint8 private constant _decimals = 9;
 
     uint256 private _tBurnTotal;
@@ -48,11 +47,6 @@ contract Fipi is Context, IERC20, Ownable {
     //2% Marketing
     uint256 public _marketing = 2;
 
-    //FOR CEX LISTING OR SOMETHING IF WE GET BIG ENOUGH
-    function disableTaxFee() external onlyOwner() {
-        _taxFee = 0;
-        _marketing = 0;
-    }
 
     function setTax(uint256 newTax) external onlyOwner() {
         //tax no bigger than 2%
@@ -71,7 +65,7 @@ contract Fipi is Context, IERC20, Ownable {
     //LP
     IPancakeRouter02 public immutable pancakeRouter;
     address public immutable pancakePair;
-    uint256 public minTokensBeforeSwap = 5 * 10 ** 5 * 10 ** 9;
+    uint256 public minTokensBeforeSwap = 5 * 10 ** 4 * 10 ** 9;
     bool inSwapAndLiquify;
     bool public swapAndLiquifyEnabled = false;
     uint256 private startTimeForSwap;
@@ -93,13 +87,9 @@ contract Fipi is Context, IERC20, Ownable {
 
     mapping (address => uint256) private lastTrade;
     
-
-  
-
     function setAntisniperEnabled(bool _antisniperEnabled) external onlyOwner() {
         antisniperEnabled = _antisniperEnabled;
     }
-
 
     //WHALE-RESTICTION
     uint256 private _maxWalletSizePromile = 20;
@@ -118,7 +108,7 @@ contract Fipi is Context, IERC20, Ownable {
 
     
     function setWhaleSellThreshold(uint256 amount) external onlyOwner() {
-        require(amount >= 100000);// Whale threshold can only be higher than 10000 (initial value is 100000), we dont want to have a possibility to set tax 16% to everyone
+        require(amount >= 100000);// Whale threshold can only be higher than 100000 (initial value is 100000), we dont want to have a possibility to set tax 16% to everyone
         _whaleSellThreshold = amount;
     }
 
@@ -140,11 +130,9 @@ contract Fipi is Context, IERC20, Ownable {
         inSwapAndLiquify = false;
     }
 
-    constructor() public {
-
+    constructor() {
         _rOwned[_msgSender()] = _rTotal;
         _LiquidityReciever = payable(_msgSender());
-
         // mainnet: 0x10ED43C718714eb63d5aA57B78B54704E256024E
         // testnet: 0xD99D1c33F9fC3444f8101754aBC46c52416550D1
         // pancaketestnet: 0x9Ac64Cc6e4415144C455BD8E4837Fea55603e5c3
@@ -160,25 +148,18 @@ contract Fipi is Context, IERC20, Ownable {
 
         emit Transfer(address(0), _msgSender(), _tTotal);
     }
-
     function name() public pure returns(string memory) {
         return _name;
     }
-
     function symbol() public pure returns(string memory) {
         return _symbol;
     }
-
     function decimals() public pure returns(uint8) {
         return _decimals;
     }
-
-    function totalSupply() public view override returns(uint256) {
+    function totalSupply() public pure override returns(uint256) {
         return _tTotal;
     }
-
-    
-
     function balanceOf(address account) public view override returns(uint256) {
         if (_isExcluded[account]) return _tOwned[account];
         return tokenFromReflection(_rOwned[account]);
@@ -271,9 +252,6 @@ contract Fipi is Context, IERC20, Ownable {
         return _BurnWallet;
     }
     
-
-   
-
     function reflectionFromToken(uint256 tAmount, bool deductTransferFee)
     external
     view
@@ -487,8 +465,6 @@ contract Fipi is Context, IERC20, Ownable {
         //lets reset fees
 
 //fees can be adjustable but multipliers are constant so its easier to navigate
-
-
         _feeMultiplier = 1;
         _marketingFeeMultiplier =1;
 
@@ -498,6 +474,7 @@ contract Fipi is Context, IERC20, Ownable {
             _marketingFeeMultiplier=0;
         }
         //FIRST THREE BLOCKS AFTER LISTING WE WILL ADD EXTRA MARKETING FEE FOR SNIPERS
+        
         else if((block.number <= _liqAddBlock + 3) && antisniperEnabled){
             _marketingFeeMultiplier = 45;
         }
