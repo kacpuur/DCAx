@@ -22,7 +22,6 @@ contract SaleVesting is Ownable {
     event Bought(address indexed account, uint256 indexed amount);
     event Claimed(address indexed account, uint256 indexed amount);
 
-    uint256 public tokenBNBRatio; //how much tokens for one bnb
     uint256 public tgeDeciles; //how much tokens for one bnb
 
     uint256[10] public releaseDates;
@@ -83,9 +82,8 @@ contract SaleVesting is Ownable {
         return 0;
     }
 
-    constructor(uint256 _tokenBNBRatio, uint256 _tgeDeciles) 
+    constructor(uint256 _tgeDeciles) 
     {
-        tokenBNBRatio = _tokenBNBRatio;
         tgeDeciles = _tgeDeciles;
     } 
 
