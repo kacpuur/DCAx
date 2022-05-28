@@ -70,13 +70,9 @@ contract FiPiStaking is Ownable {
         //reward per block need to be multiplied by bignumber to avoid problem with floating shit so it would be initialy 7500 * 10**18 (decimal) * 10**18
         rewardPerBlock = _rewardPerBlock;
         fipiTokenCumulatedPerTokenStakedUpdateBlock = block.number;
-        busd = IERC20(0x78867BbEeF44f2326bF8DDd1941a4439382EF2A7);
     }
 
     
-
-   
-
     function deposit(uint256 _amount) public {
         
         UserInfo storage user = userInfo[msg.sender];
@@ -98,6 +94,7 @@ contract FiPiStaking is Ownable {
         {
             claimAndRestake();
             claimBusd();
+            totalTokenStacked = totalTokenStacked.add(_amount);
             user.amount = user.amount.add(_amount);
         }
 
@@ -277,6 +274,16 @@ contract FiPiStaking is Ownable {
         }
     }
 
-    
+    function withDrawLeftTokens() external onlyOwner {
+        fipiToken.transfer(msg.sender, fipiToken.balanceOf(address(this)));
+    }
+
+    function setFiPiAdress(IERC20 _fipiToken) external onlyOwner {
+        fipiToken = _fipiToken;
+    }
+
+    function setBusdAdress(IERC20 _busdToken) external onlyOwner {
+        busd = _busdToken;
+    }
 
 }
